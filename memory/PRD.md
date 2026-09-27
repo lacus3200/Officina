@@ -85,6 +85,17 @@
   aggiunta custom e nome libero; categoria auto-assegnata dal nome (regole keyword);
   campo "Compatibile con i modelli" (marca → modello → chip) su ogni ricambio. Test iteration_6 OK.
 
+## Implemented (2026-06 — sessione 5)
+- ✅ Filtro compatibilità nel form riparazione (ricambi compatibili prima, con ✓)
+- ✅ Sezione Fornitori & Ordini rimossa dal frontend (backend endpoints mantenuti per dati storici)
+- ✅ Ricambi: marca (select + custom), categoria select + custom, gestione categorie
+  (rinomina con propagazione) e tipologie catalogo (modifica/elimina) — API /catalog/part-categories,
+  /catalog/part-brands, PUT /catalog/parts/{id}
+- ✅ Tabelle Magazzino e Riparazioni: colonne ridimensionabili (drag, persistite in localStorage,
+  reset), scroll interno con header sticky e scrollbar orizzontale sempre visibile
+- ✅ Backup: pagina /impostazioni con export JSON completo e import (sostituisci/unisci) con anteprima
+- ✅ Test iteration_7: backend 11/11, frontend E2E OK.
+
 ## Backlog (P1/P2)
 - P1 Filtri per data su report (settimana/mese/trimestre/anno)
 - P1 Riordino rapido da "sotto scorta" → crea ordine precompilato al fornitore

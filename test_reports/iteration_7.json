@@ -1,0 +1,35 @@
+{
+  "summary": "Iter7: Comprehensive testing of catalog/backup/resizable table features. Backend: 11/11 pytest passing (part-categories list+counts, rename empty->400, rename roundtrip persists on parts+templates, part-brands base set, PUT /catalog/parts/{id} propagates rename to parts, 404 on unknown id, POST /parts brand persists, backup export shape+all 13 collections+no _id, import unknown->400, merge idempotent, replace on services small collection). Frontend Playwright: nav-suppliers absent, nav-settings 'Backup' present, /fornitori redirects to '/'. Inventory column resize works: th-0 267->370 (+120), localStorage colw:inventory saved as [360,...], persists across reload, reset-columns-inventory restores default, inventory-table-scroll overflow=auto maxHeight=800px. Same verified for Repairs (repairs-th-0, resizer, reset-columns-repairs, repairs-table-scroll). Catalog Manager Dialog opens with tab-categories(14) and tab-templates(47); rename Schermo->Display propagates (category-row-Display appears, Schermo gone), rename back Schermo restored. Template edit/save + delete flow works via API+UI (opened dialog before creation, so specific id re-render couldn't be triggered without reopen). Backup Export downloads JSON with keys version/exported_at/collections and all 13 collections (customers, parts, repairs, sales, cash_movements, suppliers, purchase_orders, refurbished, device_brands, device_models, services, part_templates, counters). Import via file input shows import-preview, mode-merge + confirm-import-button executes; parts count preserved (8->8). Repairs > Nuova riparazione: Apple/iPhone 13 (A2633) selected -> add-part-to-repair -> compat-parts-header 'Compatibili con Apple iPhone 13' visible with 1 compat-part-{id} item shown BEFORE 'Altri ricambi'. Radix a11y warning (Missing Description) persists on DialogContent (cosmetic).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "DialogContent (multiple)", "issues": ["Console warning: 'Missing Description or aria-describedby for DialogContent'. A11y-only, non-functional."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter7_catalog_backup.py",
+    "/app/test_reports/pytest/iter7_results.xml"
+  ],
+  "action_items": [
+    "(optional a11y) Add <DialogDescription> to catalog-manager-dialog, part-template-dialog, new-part & new-repair dialogs to silence Radix warnings."
+  ],
+  "critical_code_review_comments": [
+    "PartCatalogFields.CreatableSelect switches to Input as soon as user picks 'Nuova marca…'/'Nuova categoria…' (verified via 'Lista' button returning to select earlier). Trigger placeholder + returning to Select works.",
+    "ResizableTable useColumnWidths persists widths to localStorage under 'colw:{key}'; reset() restores defaults; ScrollTable applies overflow-auto + max-h; verified widths persist across reload for both inventory & repairs (maxHeight 800px in current viewport).",
+    "PartCatalogManager rename-category propagates to both parts and part_templates as advertised (verified server_side r1.modified_count and UI category-row-* update).",
+    "server.py backup/import merge upserts by id, replace deletes then inserts; unknown collection returns 400. BACKUP_COLLECTIONS list matches the frontend LABELS dict.",
+    "PartNameSelect and Compat parts sorting in RepairsPage groups compatible items first with green ✓ and header 'Compatibili con ...' — verified in UI.",
+    "Minor: server.py PartTemplate PUT does not update parts.category when template category changes (only name is propagated). If desired, mirror the name propagation for category too — currently users must rename category via /catalog/part-categories/rename to keep parts in sync."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter7_catalog_backup.py"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@lab.local / admin123",
+  "seed_data_creation": "Test data cleaned up (TEST_ templates and parts deleted). Category rename roundtripped Schermo->Display->Schermo.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "For Radix Select options inside dialogs: use page.get_by_role('option', name='ExactText', exact=True).click(force=True). For 'Nuova marca…'/'Nuova categoria…' option, use CSS '[role=option]:has-text(\"Nuova marca\")' — page.get_by_role(name=re.compile(...)) sometimes clicks the wrong element in long lists. Column resizer must be reached via bounding_box + mouse.down/move/up (opacity 0 until hover). Backup import merge is safe (idempotent); to test replace, only round-trip a small collection like 'services' with its own export payload."
+}
