@@ -1,0 +1,32 @@
+{
+  "summary": "Iteration 2 full-stack testing. Backend: 9/9 pytest passing (auth, customers CRUD, parts CRUD with low_stock filter, repairs partial update -> consegnata+paid creates single cash entry (idempotent), sales creation decrements stock & creates cash, cash CRUD, dashboard with 14-day daily_series). Frontend: login, dashboard KPIs (4 cards + Recharts 14gg), auth guard on protected routes, logout, mobile Sheet menu, customer/part creation, low-stock filter, repair creation, cash movement, reports page all work. Only test-side issue: Select option labels are capitalized (e.g. 'Consegnata') so role-based option matching by lowercase name failed — not an app bug.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "All dialogs", "issues": ["Radix Dialog console warning: 'Missing Description or aria-describedby for {DialogContent}' on every modal (Customers, Parts, Repairs, Cash, Sales) — add <DialogDescription> or aria-describedby for a11y."]},
+      {"screen": "Dashboard chart", "issues": ["Occasional recharts warning: 'width(-1) and height(-1) of chart should be greater than 0' on initial render — set explicit min-height on ResponsiveContainer parent."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/backend_test.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Optional: add DialogDescription/aria-describedby to Dialog components to silence Radix a11y warning.",
+    "Optional: ensure ResponsiveContainer parents have min-height to avoid initial recharts sizing warning."
+  ],
+  "critical_code_review_comments": [
+    "CORS: allow_origins is set with both FRONTEND_URL and '*' along with allow_credentials=True. Browsers reject credentials with wildcard origin; explicit origin still works but the '*' entry is misleading — remove '*' when credentials are enabled.",
+    "Cookie samesite='none' with secure=True is correct for cross-site, but ensure preview domain uses HTTPS (it does).",
+    "server.py: single-file 680 lines — acceptable for this MVP but consider splitting into routers (auth, customers, parts, repairs, sales, cash, reports) if it grows.",
+    "Sales endpoint decrements stock but does not guard against negative quantities or missing part_id resolution — could result in negative stock.",
+    "Delete endpoints (customer/part/sale/repair) return 200 even when nothing matched (delete_one silently no-ops). Consider returning 404 for missing ids.",
+    "@app.on_event('startup'/'shutdown') is deprecated in favor of lifespan handlers in modern FastAPI (still works)."
+  ],
+  "updated_files": ["/app/backend/tests/backend_test.py"],
+  "success_rate": {"backend": "100%", "frontend": "~95%"},
+  "test_credentials": "admin@lab.local / admin123",
+  "seed_data_creation": "Tests create TEST_-prefixed customers/parts/repairs/sales/cash and delete them on completion. A few artefacts may persist if tests were interrupted (RIP-00005 TEST problema UI, TEST_Cliente UI, TEST_Parte UI) — safe to purge from DB if desired.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 2 verified the partial-update fix on PUT /api/repairs (RepairUpdate model) end-to-end: sending only {status, paid} preserves other fields and triggers a single cash entry. Login response contains 'token' field consumed by frontend AuthContext. Only frontend script hiccup was matching Select options by lowercase role name — use exact capitalized labels ('Consegnata', 'Uscita', 'Smartphone') or click by role option with case-insensitive regex."
+}
