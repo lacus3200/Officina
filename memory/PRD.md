@@ -81,6 +81,9 @@
 - ✅ Test iteration_5: backend 9/9, frontend E2E OK.
 - ✅ Vendita ricondizionato chiude automaticamente (consegnata + data uscita + nota) la
   riparazione collegata ancora aperta; nessun doppio incasso in cassa.
+- ✅ Catalogo ricambi (43 precaricati, API /catalog/parts) nel campo Nome del magazzino con
+  aggiunta custom e nome libero; categoria auto-assegnata dal nome (regole keyword);
+  campo "Compatibile con i modelli" (marca → modello → chip) su ogni ricambio. Test iteration_6 OK.
 
 ## Backlog (P1/P2)
 - P1 Filtri per data su report (settimana/mese/trimestre/anno)

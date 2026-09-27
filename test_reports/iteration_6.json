@@ -1,0 +1,35 @@
+{
+  "summary": "Iter6 testing of part catalog + compatible_models feature. Backend: 5/5 pytest passing (catalog seed 46+, guess-category, POST /catalog/parts dedup case-insensitive + auto-category, POST /parts auto-category from name, PUT /parts persists compatible_models). Frontend Playwright covering Magazzino > Nuovo ricambio validated: part-name-select grouped catalog, selecting 'Batteria' -> category='Batteria', 'Schermo OLED completo' -> 'Schermo'. 'Aggiungi al catalogo…' opens dialog, typing 'TEST_Vetro posteriore Galaxy' auto-fills category 'Schermo', save selects new template and it appears in the list. '✎ Nome libero' shows part-name-input, 'Catalogo' button returns to select. Compat: Apple + iPhone 13 (A2633) chip, iPhone 14 added, duplicate iPhone 13 not added (count=1), 'Tutti i modelli Apple' chip present, remove works. Save with qty=3 creates row showing name+category+'Apple iPhone 13 · Apple iPhone 14'. Edit reopens with category and chips preserved. print-label click fires jsPDF save (file download) without console errors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "PartNameSelect dropdown", "issues": ["Templates whose name has no keyword match (e.g. 'Lettore SIM', 'Pad conduttivi joypad') land in group 'Altro' — cosmetic, could be improved by adding 'sim'/'pad' keywords to PART_CATEGORY_RULES."]},
+      {"screen": "Radix DialogContent", "issues": ["Console warning: 'Missing Description or aria-describedby' on part-template-dialog and new-part dialog. A11y warning only."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter6_part_catalog.py",
+    "/app/test_reports/pytest/iter6_results.xml"
+  ],
+  "action_items": [
+    "(optional) Add DialogDescription to inventory & part-template dialogs to silence Radix a11y warnings.",
+    "(optional) Extend PART_CATEGORY_RULES to include keywords like 'sim', 'pad' to avoid seed items landing under 'Altro'."
+  ],
+  "critical_code_review_comments": [
+    "InventoryPage.jsx: onSelect callback in PartNameSelect keeps existing form.category when template returns null (Nome libero) — good. When switching from a category-carrying template to another, category correctly overwrites; verified in UI.",
+    "server.py create_part: uses guess_part_category only when category is not provided. If client submits explicit category, that wins (verified).",
+    "server.py PartTemplate dedup uses regex escape correctly; case-insensitive; auto-assigns 'Altro' when guess returns None (verified).",
+    "PartNameSelect renders group headers as plain <div> siblings inside Radix SelectContent — works but non-semantic. Consider Radix SelectGroup/SelectLabel for a11y."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter6_part_catalog.py"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@lab.local / admin123",
+  "seed_data_creation": "Created part 'Batteria' with compat Apple iPhone 13 + iPhone 14 (qty 3), template 'TEST_Vetro posteriore Galaxy' in catalog. Cleanup of TEST_ templates handled inside backend tests.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "PartNameSelect: use Playwright locator '[role=option]' filtered by regex; scroll_into_view_if_needed before click for options past the visible area (list ~46 items). Login button label is 'Entra' (not 'Accedi'). Radix Select category headers inside PartNameSelect are plain divs (not role=option)."
+}
