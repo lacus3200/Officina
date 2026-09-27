@@ -123,3 +123,25 @@
         letter-spacing: -0.03em;
     }
 }
+
+.scroll-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: hsl(var(--card));
+}
+.scroll-table::-webkit-scrollbar {
+    height: 10px;
+    width: 10px;
+}
+.scroll-table::-webkit-scrollbar-thumb {
+    background: hsl(var(--primary) / 0.45);
+    border-radius: 6px;
+}
+.scroll-table::-webkit-scrollbar-track {
+    background: hsl(var(--border) / 0.4);
+}
+.scroll-table td {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}

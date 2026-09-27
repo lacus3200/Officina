@@ -23,7 +23,13 @@ import { Plus, Search, Pencil, Trash2, Printer, AlertTriangle } from "lucide-rea
 import { toast } from "sonner";
 import { currency, formatDate, PART_CONDITION, PART_STATUS } from "@/lib/format";
 import { printPartLabel } from "@/lib/pdf";
-import { PartNameSelect, CompatibleModelsField } from "@/components/PartCatalogFields";
+import { PartNameSelect, CompatibleModelsField, PartCategorySelect, PartBrandSelect } from "@/components/PartCatalogFields";
+import { PartCatalogManager } from "@/components/PartCatalogManager";
+import { useColumnWidths, ResizableTh, ScrollTable } from "@/components/ResizableTable";
+import { Settings2 } from "lucide-react";
+
+const COLS = ["Nome", "Marca", "Categoria", "Condizione", "Stato", "Q.tà", "Costo", "Prezzo", "Posizione", "Entrata / Uscita", "Azioni"];
+const COL_DEFAULTS = [240, 130, 130, 120, 130, 90, 100, 100, 110, 140, 130];
 
 const EMPTY = {
     name: "",
@@ -41,6 +47,7 @@ const EMPTY = {
     entered_at: "",
     exited_at: "",
     compatible_models: [],
+    brand: "",
 };
 
 const toDateInput = (iso) => (iso ? iso.slice(0, 10) : "");
@@ -53,6 +60,8 @@ export default function InventoryPage() {
     const [open, setOpen] = useState(false);
     const [form, setForm] = useState(EMPTY);
     const [editingId, setEditingId] = useState(null);
+    const [manageOpen, setManageOpen] = useState(false);
+    const [widths, setWidths, resetWidths] = useColumnWidths("inventory", COL_DEFAULTS);
 
     const load = async () => {
         try {
@@ -162,14 +171,11 @@ export default function InventoryPage() {
                             />
                             <div>
                                 <Label className="eyebrow">Categoria</Label>
-                                <Input
-                                    data-testid="part-category-input"
-                                    value={form.category || ""}
-                                    placeholder="Batteria, Schermo, SSD…"
-                                    onChange={(e) =>
-                                        setForm({ ...form, category: e.target.value })
-                                    }
-                                />
+                                <PartCategorySelect value={form.category || ""} onChange={(category) => setForm({ ...form, category })} />
+                            </div>
+                            <div>
+                                <Label className="eyebrow">Marca ricambio</Label>
+                                <PartBrandSelect value={form.brand || ""} onChange={(brand) => setForm({ ...form, brand })} />
                             </div>
                             <div>
                                 <Label className="eyebrow">SKU / Codice</Label>
@@ -331,30 +337,32 @@ export default function InventoryPage() {
                     <AlertTriangle className="h-4 w-4 mr-2" />
                     Solo sotto scorta
                 </Button>
+                <Button variant="outline" onClick={() => setManageOpen(true)} data-testid="manage-catalog-button">
+                    <Settings2 className="h-4 w-4 mr-2" /> Categorie e catalogo
+                </Button>
+                <button className="ml-auto text-xs text-muted-foreground hover:text-primary" onClick={resetWidths} data-testid="reset-columns-inventory">
+                    Ripristina larghezza colonne
+                </button>
             </div>
+            <PartCatalogManager open={manageOpen} onOpenChange={setManageOpen} onChanged={load} />
 
             <Card>
-                <CardContent className="p-0 overflow-x-auto">
-                    <table className="w-full text-sm">
+                <CardContent className="p-0">
+                    <ScrollTable widths={widths} testId="inventory-table-scroll">
                         <thead>
                             <tr className="text-left text-muted-foreground border-b border-border">
-                                <th className="px-4 py-3 font-medium">Nome</th>
-                                <th className="px-4 py-3 font-medium">Categoria</th>
-                                <th className="px-4 py-3 font-medium">Condizione</th>
-                                <th className="px-4 py-3 font-medium">Stato</th>
-                                <th className="px-4 py-3 font-medium text-right">Q.tà</th>
-                                <th className="px-4 py-3 font-medium text-right">Costo</th>
-                                <th className="px-4 py-3 font-medium text-right">Prezzo</th>
-                                <th className="px-4 py-3 font-medium">Posizione</th>
-                                <th className="px-4 py-3 font-medium">Entrata / Uscita</th>
-                                <th className="px-4 py-3 font-medium text-right">Azioni</th>
+                                {COLS.map((c, i) => (
+                                    <ResizableTh key={c} index={i} widths={widths} setWidths={setWidths} testId={`inventory-th-${i}`} className={[5, 6, 7, 10].includes(i) ? "text-right" : ""}>
+                                        {c}
+                                    </ResizableTh>
+                                ))}
                             </tr>
                         </thead>
                         <tbody>
                             {items.length === 0 && (
                                 <tr>
                                     <td
-                                        colSpan={10}
+                                        colSpan={11}
                                         className="text-center py-14 text-muted-foreground"
                                     >
                                         Nessun ricambio nel magazzino.
@@ -376,12 +384,15 @@ export default function InventoryPage() {
                                                 {p.sku || "—"}
                                             </div>
                                             {p.compatible_models?.length > 0 && (
-                                                <div className="text-[11px] text-sky-400/80 truncate max-w-xs" title={p.compatible_models.join(", ")}>
+                                                <div className="text-[11px] text-sky-400/80 truncate" title={p.compatible_models.join(", ")}>
                                                     {p.compatible_models.join(" · ")}
                                                 </div>
                                             )}
                                         </td>
-                                        <td className="px-4 py-3 text-muted-foreground">
+                                        <td className="px-4 py-3 text-muted-foreground truncate">
+                                            {p.brand || "—"}
+                                        </td>
+                                        <td className="px-4 py-3 text-muted-foreground truncate">
                                             {p.category || "—"}
                                         </td>
                                         <td className="px-4 py-3">
@@ -454,7 +465,7 @@ export default function InventoryPage() {
                                 );
                             })}
                         </tbody>
-                    </table>
+                    </ScrollTable>
                 </CardContent>
             </Card>
         </div>

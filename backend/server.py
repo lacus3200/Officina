@@ -137,6 +137,7 @@ class Part(BaseModel):
     entered_at: Optional[str] = None
     exited_at: Optional[str] = None
     compatible_models: List[str] = []
+    brand: Optional[str] = None
     created_at: str = Field(default_factory=now_iso)
     updated_at: str = Field(default_factory=now_iso)
 
@@ -157,6 +158,7 @@ class PartIn(BaseModel):
     entered_at: Optional[str] = None
     exited_at: Optional[str] = None
     compatible_models: List[str] = []
+    brand: Optional[str] = None
 
 
 RepairStatus = Literal["in_attesa", "in_lavorazione", "completata", "consegnata", "annullata"]
@@ -476,6 +478,16 @@ class ColorIn(BaseModel):
 class PartTemplateIn(BaseModel):
     name: str
     category: Optional[str] = None
+
+
+class RenameIn(BaseModel):
+    old: str
+    new: str
+
+
+class BackupIn(BaseModel):
+    collections: dict
+    mode: Literal["replace", "merge"] = "replace"
 
 
 PART_CATEGORY_RULES = [
@@ -1367,6 +1379,46 @@ async def delete_part_template(tpl_id: str, user: dict = Depends(get_current_use
     return {"ok": True}
 
 
+@api.put("/catalog/parts/{tpl_id}")
+async def update_part_template(tpl_id: str, body: PartTemplateIn, user: dict = Depends(get_current_user)):
+    tpl = await db.part_templates.find_one({"id": tpl_id})
+    if not tpl:
+        raise HTTPException(404, "Ricambio non trovato")
+    name = body.name.strip()
+    cat = (body.category or "").strip() or guess_part_category(name) or "Altro"
+    await db.part_templates.update_one({"id": tpl_id}, {"$set": {"name": name, "category": cat}})
+    if name != tpl["name"]:
+        await db.parts.update_many({"name": tpl["name"]}, {"$set": {"name": name}})
+    return clean(await db.part_templates.find_one({"id": tpl_id}))
+
+
+@api.get("/catalog/part-categories")
+async def list_part_categories(user: dict = Depends(get_current_user)):
+    a = await db.part_templates.distinct("category")
+    b = await db.parts.distinct("category")
+    cats = sorted({c for c in a + b if c}, key=str.lower)
+    counts = {c: await db.parts.count_documents({"category": c}) for c in cats}
+    return [{"name": c, "parts": counts[c]} for c in cats]
+
+
+@api.put("/catalog/part-categories/rename")
+async def rename_part_category(body: RenameIn, user: dict = Depends(get_current_user)):
+    new = body.new.strip()
+    if not new:
+        raise HTTPException(400, "Nome categoria obbligatorio")
+    r1 = await db.parts.update_many({"category": body.old}, {"$set": {"category": new}})
+    r2 = await db.part_templates.update_many({"category": body.old}, {"$set": {"category": new}})
+    return {"parts": r1.modified_count, "templates": r2.modified_count}
+
+
+@api.get("/catalog/part-brands")
+async def list_part_brands(user: dict = Depends(get_current_user)):
+    brands = await db.parts.distinct("brand")
+    base = ["Originale (OEM)", "Compatibile / aftermarket", "Rigenerato", "Apple", "Samsung", "Xiaomi", "Huawei", "LG",
+            "BOE", "Tianma", "JDI", "Kingston", "Samsung Memory", "Crucial", "WD", "Seagate", "Corsair", "Sony", "Nintendo"]
+    return sorted({b for b in brands + base if b}, key=str.lower)
+
+
 @api.get("/catalog/parts/guess-category")
 async def guess_category(name: str, user: dict = Depends(get_current_user)):
     return {"category": guess_part_category(name)}
@@ -1443,6 +1495,46 @@ async def cash_reference(mov_id: str, user: dict = Depends(get_current_user)):
     if d:
         return {"type": "refurbished", "data": await enrich_refurb(d)}
     return {"type": None, "data": None}
+
+
+# ---------- Backup ----------
+BACKUP_COLLECTIONS = ["customers", "parts", "repairs", "sales", "cash_movements", "suppliers", "purchase_orders",
+                      "refurbished", "device_brands", "device_models", "services", "part_templates", "counters"]
+
+
+@api.get("/backup/export")
+async def export_backup(user: dict = Depends(get_current_user)):
+    data = {}
+    for name in BACKUP_COLLECTIONS:
+        docs = await db[name].find({}).to_list(100000)
+        data[name] = docs if name == "counters" else [clean(d) for d in docs]
+    return {"version": 1, "exported_at": now_iso(), "collections": data}
+
+
+@api.post("/backup/import")
+async def import_backup(body: BackupIn, user: dict = Depends(get_current_user)):
+    unknown = [k for k in body.collections if k not in BACKUP_COLLECTIONS]
+    if unknown:
+        raise HTTPException(400, f"Collezioni non riconosciute: {', '.join(unknown)}")
+    result = {}
+    for name, docs in body.collections.items():
+        if not isinstance(docs, list):
+            raise HTTPException(400, f"Formato non valido per {name}")
+        if body.mode == "replace":
+            await db[name].delete_many({})
+            if docs:
+                await db[name].insert_many([dict(d) for d in docs])
+            result[name] = len(docs)
+        else:
+            n = 0
+            for d in docs:
+                key = {"_id": d["_id"]} if name == "counters" and "_id" in d else {"id": d.get("id")}
+                if key.get("id") is None and name != "counters":
+                    continue
+                await db[name].replace_one(key, dict(d), upsert=True)
+                n += 1
+            result[name] = n
+    return {"ok": True, "mode": body.mode, "imported": result}
 
 
 # ---------- Reports / Dashboard ----------

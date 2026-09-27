@@ -41,6 +41,19 @@ import { CustomerSelect } from "@/components/CustomerSelect";
 import { DeviceBrandModelFields } from "@/components/DeviceBrandModelFields";
 import { SerialHistoryAlert } from "@/components/SerialHistoryAlert";
 import { RepairServicesField } from "@/components/RepairServicesField";
+import { useColumnWidths, ResizableTh, ScrollTable } from "@/components/ResizableTable";
+
+const COLS = ["Ticket", "Cliente", "Dispositivo", "Problema", "Stato", "Prezzo", "Entrata / Uscita", "Azioni"];
+const COL_DEFAULTS = [120, 170, 190, 260, 170, 110, 140, 130];
+
+const isCompatible = (p, brand, model) => {
+    if (!brand || !p.compatible_models?.length) return false;
+    const full = `${brand} ${model || ""}`.trim().toLowerCase();
+    return p.compatible_models.some((m) => {
+        const ml = m.toLowerCase();
+        return ml === full || (ml.startsWith(brand.toLowerCase()) && ml.includes("tutti i modelli")) || (model && ml === `${brand} ${model}`.toLowerCase());
+    });
+};
 
 const toDateInput = (iso) => (iso ? iso.slice(0, 10) : "");
 const fromDateInput = (d, fallback) => (d ? new Date(`${d}T12:00:00`).toISOString() : fallback || null);
@@ -75,6 +88,7 @@ export default function RepairsPage() {
     const [open, setOpen] = useState(false);
     const [form, setForm] = useState(EMPTY);
     const [editingId, setEditingId] = useState(null);
+    const [widths, setWidths, resetWidths] = useColumnWidths("repairs", COL_DEFAULTS);
 
     const load = async () => {
         try {
@@ -383,12 +397,33 @@ export default function RepairsPage() {
                                                     <SelectTrigger>
                                                         <SelectValue placeholder="Seleziona ricambio" />
                                                     </SelectTrigger>
-                                                    <SelectContent>
-                                                        {parts.map((p) => (
-                                                            <SelectItem key={p.id} value={p.id}>
-                                                                {p.name} · {p.quantity} in stock
-                                                            </SelectItem>
-                                                        ))}
+                                                    <SelectContent className="max-h-72">
+                                                        {(() => {
+                                                            const compat = parts.filter((p) => isCompatible(p, form.device_brand, form.device_model));
+                                                            const others = parts.filter((p) => !compat.includes(p));
+                                                            return (
+                                                                <>
+                                                                    {compat.length > 0 && (
+                                                                        <div className="px-2 pt-2 pb-1 eyebrow text-emerald-400" data-testid="compat-parts-header">
+                                                                            Compatibili con {form.device_brand} {form.device_model}
+                                                                        </div>
+                                                                    )}
+                                                                    {compat.map((p) => (
+                                                                        <SelectItem key={p.id} value={p.id} data-testid={`compat-part-${p.id}`}>
+                                                                            <span className="text-emerald-400 mr-1">✓</span>{p.name}{p.brand ? ` (${p.brand})` : ""} · {p.quantity} in stock
+                                                                        </SelectItem>
+                                                                    ))}
+                                                                    {compat.length > 0 && others.length > 0 && (
+                                                                        <div className="px-2 pt-2 pb-1 eyebrow">Altri ricambi</div>
+                                                                    )}
+                                                                    {others.map((p) => (
+                                                                        <SelectItem key={p.id} value={p.id}>
+                                                                            {p.name}{p.brand ? ` (${p.brand})` : ""} · {p.quantity} in stock
+                                                                        </SelectItem>
+                                                                    ))}
+                                                                </>
+                                                            );
+                                                        })()}
                                                     </SelectContent>
                                                 </Select>
                                             </div>
@@ -488,19 +523,21 @@ export default function RepairsPage() {
                 </Select>
             </div>
 
+            <div className="flex justify-end">
+                <button className="text-xs text-muted-foreground hover:text-primary" onClick={resetWidths} data-testid="reset-columns-repairs">
+                    Ripristina larghezza colonne
+                </button>
+            </div>
             <Card>
-                <CardContent className="p-0 overflow-x-auto">
-                    <table className="w-full text-sm">
+                <CardContent className="p-0">
+                    <ScrollTable widths={widths} testId="repairs-table-scroll">
                         <thead>
                             <tr className="text-left text-muted-foreground border-b border-border">
-                                <th className="px-4 py-3 font-medium">Ticket</th>
-                                <th className="px-4 py-3 font-medium">Cliente</th>
-                                <th className="px-4 py-3 font-medium">Dispositivo</th>
-                                <th className="px-4 py-3 font-medium">Problema</th>
-                                <th className="px-4 py-3 font-medium">Stato</th>
-                                <th className="px-4 py-3 font-medium text-right">Prezzo</th>
-                                <th className="px-4 py-3 font-medium">Entrata / Uscita</th>
-                                <th className="px-4 py-3 font-medium text-right">Azioni</th>
+                                {COLS.map((c, i) => (
+                                    <ResizableTh key={c} index={i} widths={widths} setWidths={setWidths} testId={`repairs-th-${i}`} className={[5, 7].includes(i) ? "text-right" : ""}>
+                                        {c}
+                                    </ResizableTh>
+                                ))}
                             </tr>
                         </thead>
                         <tbody>
@@ -527,7 +564,7 @@ export default function RepairsPage() {
                                             {r.device_brand} {r.device_model}
                                         </div>
                                     </td>
-                                    <td className="px-4 py-3 max-w-xs truncate">
+                                    <td className="px-4 py-3 truncate" title={r.problem}>
                                         {r.problem}
                                     </td>
                                     <td className="px-4 py-3">
@@ -582,7 +619,7 @@ export default function RepairsPage() {
                                 </tr>
                             ))}
                         </tbody>
-                    </table>
+                    </ScrollTable>
                 </CardContent>
             </Card>
         </div>

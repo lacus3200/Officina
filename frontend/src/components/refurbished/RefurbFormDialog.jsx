@@ -41,11 +41,9 @@ const EMPTY = {
 
 export function RefurbFormDialog({ open, onOpenChange, editing, onSaved }) {
     const [form, setForm] = useState(EMPTY);
-    const [suppliers, setSuppliers] = useState([]);
 
     useEffect(() => {
         if (!open) return;
-        api.get("/suppliers").then((r) => setSuppliers(r.data)).catch(() => {});
         setForm(
             editing
                 ? {
@@ -158,7 +156,7 @@ export function RefurbFormDialog({ open, onOpenChange, editing, onSaved }) {
                         <Label className="eyebrow">Specifiche (RAM, storage…)</Label>
                         <Input value={form.specs} onChange={set("specs")} />
                     </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-2 gap-3">
                         <div>
                             <Label className="eyebrow">Costo acquisto €</Label>
                             <Input
@@ -178,30 +176,6 @@ export function RefurbFormDialog({ open, onOpenChange, editing, onSaved }) {
                                 value={form.target_price}
                                 onChange={set("target_price")}
                             />
-                        </div>
-                        <div>
-                            <Label className="eyebrow">Fornitore</Label>
-                            <Select
-                                value={form.supplier_id || "none"}
-                                onValueChange={(v) => {
-                                    const s = suppliers.find((x) => x.id === v);
-                                    setForm({
-                                        ...form,
-                                        supplier_id: v === "none" ? "" : v,
-                                        purchase_source: s ? s.name : form.purchase_source,
-                                    });
-                                }}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="—" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="none">— privato / altro —</SelectItem>
-                                    {suppliers.map((s) => (
-                                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
                         </div>
                     </div>
                     <div>

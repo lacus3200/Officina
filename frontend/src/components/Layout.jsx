@@ -12,7 +12,7 @@ import {
     LogOut,
     Menu,
     RefreshCw,
-    Truck,
+    Settings,
     ListChecks,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -27,9 +27,9 @@ const NAV = [
     { to: "/magazzino", label: "Magazzino", icon: Package, testId: "nav-inventory" },
     { to: "/vendite", label: "Vendite", icon: ShoppingCart, testId: "nav-sales" },
     { to: "/ricondizionati", label: "Ricondizionati", icon: RefreshCw, testId: "nav-refurbished" },
-    { to: "/fornitori", label: "Fornitori & Ordini", icon: Truck, testId: "nav-suppliers" },
     { to: "/cassa", label: "Cassa", icon: Wallet, testId: "nav-cash" },
     { to: "/report", label: "Report", icon: BarChart3, testId: "nav-reports" },
+    { to: "/impostazioni", label: "Backup", icon: Settings, testId: "nav-settings" },
 ];
 
 function NavItems({ onNavigate }) {

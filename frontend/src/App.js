@@ -11,8 +11,8 @@ import SalesPage from "@/pages/SalesPage";
 import CashPage from "@/pages/CashPage";
 import ReportsPage from "@/pages/ReportsPage";
 import RefurbishedPage from "@/pages/RefurbishedPage";
-import SuppliersPage from "@/pages/SuppliersPage";
 import ServicesPage from "@/pages/ServicesPage";
+import SettingsPage from "@/pages/SettingsPage";
 import Layout from "@/components/Layout";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -111,18 +111,18 @@ function AppRoutes() {
                 }
             />
             <Route
-                path="/fornitori"
-                element={
-                    <Protected>
-                        <SuppliersPage />
-                    </Protected>
-                }
-            />
-            <Route
                 path="/listino"
                 element={
                     <Protected>
                         <ServicesPage />
+                    </Protected>
+                }
+            />
+            <Route
+                path="/impostazioni"
+                element={
+                    <Protected>
+                        <SettingsPage />
                     </Protected>
                 }
             />

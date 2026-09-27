@@ -141,3 +141,37 @@ export function CompatibleModelsField({ value, onChange }) {
         </div>
     );
 }
+
+function CreatableSelect({ value, onChange, options, placeholder, testId, addLabel }) {
+    const [custom, setCustom] = useState(false);
+    if (custom || (value && !options.includes(value))) {
+        return (
+            <div className="flex gap-2">
+                <Input autoFocus value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} data-testid={`${testId}-input`} />
+                <Button type="button" variant="outline" size="sm" onClick={() => { setCustom(false); onChange(""); }}>Lista</Button>
+            </div>
+        );
+    }
+    return (
+        <Select value={value || "none"} onValueChange={(v) => { if (v === NEW) { setCustom(true); onChange(""); return; } onChange(v === "none" ? "" : v); }}>
+            <SelectTrigger data-testid={testId}><SelectValue placeholder={placeholder} /></SelectTrigger>
+            <SelectContent className="max-h-72">
+                <SelectItem value="none">—</SelectItem>
+                {options.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                <SelectItem value={NEW} className="text-primary"><span className="flex items-center gap-1"><Plus className="h-3 w-3" /> {addLabel}</span></SelectItem>
+            </SelectContent>
+        </Select>
+    );
+}
+
+export function PartCategorySelect({ value, onChange }) {
+    const [cats, setCats] = useState([]);
+    useEffect(() => { api.get("/catalog/part-categories").then((r) => setCats(r.data.map((c) => c.name))).catch(() => {}); }, []);
+    return <CreatableSelect value={value} onChange={onChange} options={cats} placeholder="Categoria" testId="part-category-select" addLabel="Nuova categoria…" />;
+}
+
+export function PartBrandSelect({ value, onChange }) {
+    const [brands, setBrands] = useState([]);
+    useEffect(() => { api.get("/catalog/part-brands").then((r) => setBrands(r.data)).catch(() => {}); }, []);
+    return <CreatableSelect value={value} onChange={onChange} options={brands} placeholder="Marca / produttore" testId="part-brand-select" addLabel="Nuova marca…" />;
+}
