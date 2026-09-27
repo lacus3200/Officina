@@ -23,6 +23,7 @@ import { Plus, Printer, Trash2, ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
 import { currency, formatDateTime } from "@/lib/format";
 import { printSaleInvoice } from "@/lib/pdf";
+import { CustomerSelect } from "@/components/CustomerSelect";
 
 const EMPTY_ITEM = { part_id: "", description: "", quantity: 1, unit_price: 0 };
 
@@ -132,41 +133,14 @@ export default function SalesPage() {
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
                                     <Label className="eyebrow">Cliente</Label>
-                                    <Select
-                                        value={form.customer_id || "none"}
-                                        onValueChange={(v) => {
-                                            if (v === "none") {
-                                                setForm({
-                                                    ...form,
-                                                    customer_id: "",
-                                                    customer_name: "",
-                                                });
-                                            } else {
-                                                const c = customers.find(
-                                                    (x) => x.id === v,
-                                                );
-                                                setForm({
-                                                    ...form,
-                                                    customer_id: v,
-                                                    customer_name: c?.name || "",
-                                                });
-                                            }
-                                        }}
-                                    >
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Cliente" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="none">
-                                                — walk-in —
-                                            </SelectItem>
-                                            {customers.map((c) => (
-                                                <SelectItem key={c.id} value={c.id}>
-                                                    {c.name}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                                    <CustomerSelect
+                                        customers={customers}
+                                        value={form.customer_id}
+                                        testId="sale-customer-select"
+                                        noneLabel="— walk-in —"
+                                        onCreated={(c) => setCustomers((prev) => [c, ...prev])}
+                                        onChange={(id, c) => setForm({ ...form, customer_id: id, customer_name: c?.name || "" })}
+                                    />
                                 </div>
                                 <div>
                                     <Label className="eyebrow">Pagamento</Label>

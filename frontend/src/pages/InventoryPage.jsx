@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/select";
 import { Plus, Search, Pencil, Trash2, Printer, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
-import { currency, PART_CONDITION, PART_STATUS } from "@/lib/format";
+import { currency, formatDate, PART_CONDITION, PART_STATUS } from "@/lib/format";
 import { printPartLabel } from "@/lib/pdf";
 
 const EMPTY = {
@@ -37,7 +37,12 @@ const EMPTY = {
     sell_price: 0,
     location: "",
     notes: "",
+    entered_at: "",
+    exited_at: "",
 };
+
+const toDateInput = (iso) => (iso ? iso.slice(0, 10) : "");
+const fromDateInput = (d) => (d ? new Date(`${d}T12:00:00`).toISOString() : null);
 
 export default function InventoryPage() {
     const [items, setItems] = useState([]);
@@ -70,6 +75,8 @@ export default function InventoryPage() {
                 min_quantity: Number(form.min_quantity),
                 cost_price: Number(form.cost_price),
                 sell_price: Number(form.sell_price),
+                entered_at: fromDateInput(form.entered_at),
+                exited_at: fromDateInput(form.exited_at),
             };
             if (editingId) {
                 await api.put(`/parts/${editingId}`, payload);
@@ -88,7 +95,7 @@ export default function InventoryPage() {
     };
 
     const edit = (p) => {
-        setForm({ ...EMPTY, ...p });
+        setForm({ ...EMPTY, ...p, entered_at: toDateInput(p.entered_at || p.created_at), exited_at: toDateInput(p.exited_at) });
         setEditingId(p.id);
         setOpen(true);
     };
@@ -269,6 +276,14 @@ export default function InventoryPage() {
                                     }
                                 />
                             </div>
+                            <div>
+                                <Label className="eyebrow">Data entrata</Label>
+                                <Input type="date" value={form.entered_at} onChange={(e) => setForm({ ...form, entered_at: e.target.value })} data-testid="part-entered-date" />
+                            </div>
+                            <div>
+                                <Label className="eyebrow">Data uscita</Label>
+                                <Input type="date" value={form.exited_at} onChange={(e) => setForm({ ...form, exited_at: e.target.value })} data-testid="part-exited-date" />
+                            </div>
                             <div className="col-span-2">
                                 <Label className="eyebrow">Note</Label>
                                 <Textarea
@@ -325,6 +340,7 @@ export default function InventoryPage() {
                                 <th className="px-4 py-3 font-medium text-right">Costo</th>
                                 <th className="px-4 py-3 font-medium text-right">Prezzo</th>
                                 <th className="px-4 py-3 font-medium">Posizione</th>
+                                <th className="px-4 py-3 font-medium">Entrata / Uscita</th>
                                 <th className="px-4 py-3 font-medium text-right">Azioni</th>
                             </tr>
                         </thead>
@@ -332,7 +348,7 @@ export default function InventoryPage() {
                             {items.length === 0 && (
                                 <tr>
                                     <td
-                                        colSpan={9}
+                                        colSpan={10}
                                         className="text-center py-14 text-muted-foreground"
                                     >
                                         Nessun ricambio nel magazzino.
@@ -388,6 +404,10 @@ export default function InventoryPage() {
                                         </td>
                                         <td className="px-4 py-3 text-xs text-muted-foreground">
                                             {p.location || "—"}
+                                        </td>
+                                        <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                                            <div>↓ {formatDate(p.entered_at || p.created_at)}</div>
+                                            {p.exited_at && <div className="text-sky-400">↑ {formatDate(p.exited_at)}</div>}
                                         </td>
                                         <td className="px-4 py-3">
                                             <div className="flex gap-1 justify-end">

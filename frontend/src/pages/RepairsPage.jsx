@@ -32,11 +32,17 @@ import {
 import { toast } from "sonner";
 import {
     currency,
-    formatDateTime,
+    formatDate,
     REPAIR_STATUS,
     DEVICE_TYPES,
 } from "@/lib/format";
 import { printRepairReceipt } from "@/lib/pdf";
+import { CustomerSelect } from "@/components/CustomerSelect";
+import { DeviceBrandModelFields } from "@/components/DeviceBrandModelFields";
+import { SerialHistoryAlert } from "@/components/SerialHistoryAlert";
+
+const toDateInput = (iso) => (iso ? iso.slice(0, 10) : "");
+const fromDateInput = (d, fallback) => (d ? new Date(`${d}T12:00:00`).toISOString() : fallback || null);
 
 const EMPTY = {
     customer_id: "",
@@ -54,6 +60,8 @@ const EMPTY = {
     paid: false,
     parts_used: [],
     technical_notes: "",
+    received_at: "",
+    delivered_at: "",
 };
 
 export default function RepairsPage() {
@@ -94,7 +102,11 @@ export default function RepairsPage() {
                 estimate: Number(form.estimate),
                 labor_cost: Number(form.labor_cost),
                 final_price: Number(form.final_price),
+                received_at: fromDateInput(form.received_at),
+                delivered_at: fromDateInput(form.delivered_at),
             };
+            if (!payload.received_at) delete payload.received_at;
+            if (!payload.delivered_at) delete payload.delivered_at;
             if (editingId) {
                 await api.put(`/repairs/${editingId}`, payload);
                 toast.success("Riparazione aggiornata");
@@ -112,7 +124,7 @@ export default function RepairsPage() {
     };
 
     const edit = (r) => {
-        setForm({ ...EMPTY, ...r });
+        setForm({ ...EMPTY, ...r, received_at: toDateInput(r.received_at || r.created_at), delivered_at: toDateInput(r.delivered_at) });
         setEditingId(r.id);
         setOpen(true);
     };
@@ -180,37 +192,15 @@ export default function RepairsPage() {
                         <div className="grid grid-cols-2 gap-4">
                             <div className="col-span-2">
                                 <Label className="eyebrow">Cliente</Label>
-                                <Select
-                                    value={form.customer_id || "none"}
-                                    onValueChange={(v) => {
-                                        if (v === "none") {
-                                            setForm({
-                                                ...form,
-                                                customer_id: "",
-                                                customer_name: form.customer_name,
-                                            });
-                                        } else {
-                                            const c = customers.find((x) => x.id === v);
-                                            setForm({
-                                                ...form,
-                                                customer_id: v,
-                                                customer_name: c?.name || "",
-                                            });
-                                        }
-                                    }}
-                                >
-                                    <SelectTrigger data-testid="repair-customer-select">
-                                        <SelectValue placeholder="Seleziona cliente" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="none">— nessuno / walk-in —</SelectItem>
-                                        {customers.map((c) => (
-                                            <SelectItem key={c.id} value={c.id}>
-                                                {c.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                <CustomerSelect
+                                    customers={customers}
+                                    value={form.customer_id}
+                                    testId="repair-customer-select"
+                                    onCreated={(c) => setCustomers((prev) => [c, ...prev])}
+                                    onChange={(id, c) =>
+                                        setForm({ ...form, customer_id: id, customer_name: id ? c?.name || "" : form.customer_name })
+                                    }
+                                />
                             </div>
                             {!form.customer_id && (
                                 <div className="col-span-2">
@@ -241,31 +231,39 @@ export default function RepairsPage() {
                                     </SelectContent>
                                 </Select>
                             </div>
-                            <div>
-                                <Label className="eyebrow">Marca</Label>
-                                <Input
-                                    value={form.device_brand}
-                                    onChange={(e) =>
-                                        setForm({ ...form, device_brand: e.target.value })
-                                    }
-                                />
-                            </div>
-                            <div>
-                                <Label className="eyebrow">Modello</Label>
-                                <Input
-                                    value={form.device_model}
-                                    onChange={(e) =>
-                                        setForm({ ...form, device_model: e.target.value })
-                                    }
-                                />
-                            </div>
+                            <DeviceBrandModelFields
+                                brand={form.device_brand}
+                                model={form.device_model}
+                                deviceType={form.device_type}
+                                onChange={({ brand, model }) => setForm({ ...form, device_brand: brand, device_model: model })}
+                            />
                             <div>
                                 <Label className="eyebrow">Seriale / IMEI</Label>
                                 <Input
+                                    data-testid="repair-serial-input"
                                     value={form.serial_or_imei}
                                     onChange={(e) =>
                                         setForm({ ...form, serial_or_imei: e.target.value })
                                     }
+                                />
+                            </div>
+                            <SerialHistoryAlert serial={form.serial_or_imei} excludeId={editingId} />
+                            <div>
+                                <Label className="eyebrow">Data entrata</Label>
+                                <Input
+                                    type="date"
+                                    data-testid="repair-received-date"
+                                    value={form.received_at}
+                                    onChange={(e) => setForm({ ...form, received_at: e.target.value })}
+                                />
+                            </div>
+                            <div>
+                                <Label className="eyebrow">Data uscita / consegna</Label>
+                                <Input
+                                    type="date"
+                                    data-testid="repair-delivered-date"
+                                    value={form.delivered_at}
+                                    onChange={(e) => setForm({ ...form, delivered_at: e.target.value })}
                                 />
                             </div>
                             <div className="col-span-2">
@@ -491,7 +489,7 @@ export default function RepairsPage() {
                                 <th className="px-4 py-3 font-medium">Problema</th>
                                 <th className="px-4 py-3 font-medium">Stato</th>
                                 <th className="px-4 py-3 font-medium text-right">Prezzo</th>
-                                <th className="px-4 py-3 font-medium">Aperto</th>
+                                <th className="px-4 py-3 font-medium">Entrata / Uscita</th>
                                 <th className="px-4 py-3 font-medium text-right">Azioni</th>
                             </tr>
                         </thead>
@@ -537,8 +535,9 @@ export default function RepairsPage() {
                                     <td className="px-4 py-3 text-right font-mono">
                                         {currency(r.final_price || r.estimate)}
                                     </td>
-                                    <td className="px-4 py-3 text-xs text-muted-foreground">
-                                        {formatDateTime(r.created_at)}
+                                    <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                                        <div>↓ {formatDate(r.received_at || r.created_at)}</div>
+                                        {r.delivered_at && <div className="text-sky-400">↑ {formatDate(r.delivered_at)}</div>}
                                     </td>
                                     <td className="px-4 py-3">
                                         <div className="flex gap-1 justify-end">

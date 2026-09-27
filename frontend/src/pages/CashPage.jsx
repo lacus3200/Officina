@@ -18,13 +18,15 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { Plus, Trash2, ArrowUpRight, ArrowDownRight, Link2 } from "lucide-react";
+import { CashReferenceDialog } from "@/components/CashReferenceDialog";
 import { toast } from "sonner";
 import { currency, formatDateTime } from "@/lib/format";
 
 export default function CashPage() {
     const [items, setItems] = useState([]);
     const [open, setOpen] = useState(false);
+    const [detail, setDetail] = useState(null);
     const [form, setForm] = useState({
         type: "entrata",
         category: "altro",
@@ -232,7 +234,9 @@ export default function CashPage() {
                             {items.map((m, idx) => (
                                 <tr
                                     key={m.id}
-                                    className={`border-b border-border/50 hover:bg-white/5 ${idx % 2 ? "bg-white/[0.02]" : ""}`}
+                                    className={`border-b border-border/50 hover:bg-white/5 cursor-pointer ${idx % 2 ? "bg-white/[0.02]" : ""}`}
+                                    onClick={() => setDetail(m)}
+                                    data-testid={`cash-row-${m.id}`}
                                 >
                                     <td className="px-4 py-3 text-xs text-muted-foreground">
                                         {formatDateTime(m.date)}
@@ -251,14 +255,19 @@ export default function CashPage() {
                                     <td className="px-4 py-3 capitalize text-muted-foreground">
                                         {m.category.replace("_", " ")}
                                     </td>
-                                    <td className="px-4 py-3">{m.description || "—"}</td>
+                                    <td className="px-4 py-3">
+                                        <span className="inline-flex items-center gap-1.5">
+                                            {m.reference_id && <Link2 className="h-3 w-3 text-primary shrink-0" />}
+                                            {m.description || "—"}
+                                        </span>
+                                    </td>
                                     <td
                                         className={`px-4 py-3 text-right font-mono ${m.type === "entrata" ? "text-emerald-400" : "text-red-400"}`}
                                     >
                                         {m.type === "entrata" ? "+" : "-"}
                                         {currency(m.amount)}
                                     </td>
-                                    <td className="px-4 py-3 text-right">
+                                    <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                                         <Button
                                             variant="ghost"
                                             size="icon"
@@ -275,6 +284,7 @@ export default function CashPage() {
                     </table>
                 </CardContent>
             </Card>
+            <CashReferenceDialog movement={detail} onOpenChange={(v) => !v && setDetail(null)} />
         </div>
     );
 }

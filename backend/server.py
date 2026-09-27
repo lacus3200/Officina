@@ -5,6 +5,7 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 import os
+import re
 import logging
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -133,6 +134,8 @@ class Part(BaseModel):
     sell_price: float = 0.0
     location: Optional[str] = None
     notes: Optional[str] = None
+    entered_at: Optional[str] = None
+    exited_at: Optional[str] = None
     created_at: str = Field(default_factory=now_iso)
     updated_at: str = Field(default_factory=now_iso)
 
@@ -150,6 +153,8 @@ class PartIn(BaseModel):
     sell_price: float = 0.0
     location: Optional[str] = None
     notes: Optional[str] = None
+    entered_at: Optional[str] = None
+    exited_at: Optional[str] = None
 
 
 RepairStatus = Literal["in_attesa", "in_lavorazione", "completata", "consegnata", "annullata"]
@@ -181,6 +186,7 @@ class Repair(BaseModel):
     final_price: float = 0.0
     paid: bool = False
     technical_notes: Optional[str] = None
+    received_at: Optional[str] = None
     created_at: str = Field(default_factory=now_iso)
     updated_at: str = Field(default_factory=now_iso)
     delivered_at: Optional[str] = None
@@ -202,6 +208,8 @@ class RepairIn(BaseModel):
     final_price: float = 0.0
     paid: bool = False
     technical_notes: Optional[str] = None
+    received_at: Optional[str] = None
+    delivered_at: Optional[str] = None
 
 
 class RepairUpdate(BaseModel):
@@ -221,6 +229,8 @@ class RepairUpdate(BaseModel):
     final_price: Optional[float] = None
     paid: Optional[bool] = None
     technical_notes: Optional[str] = None
+    received_at: Optional[str] = None
+    delivered_at: Optional[str] = None
 
 
 class SaleItem(BaseModel):
@@ -376,6 +386,8 @@ class Refurbished(BaseModel):
     brand: Optional[str] = None
     model: Optional[str] = None
     serial_or_imei: Optional[str] = None
+    color: Optional[str] = None
+    grade: Optional[str] = None
     specs: Optional[str] = None
     purchase_cost: float = 0.0
     purchase_source: Optional[str] = None
@@ -398,6 +410,8 @@ class RefurbishedIn(BaseModel):
     brand: Optional[str] = None
     model: Optional[str] = None
     serial_or_imei: Optional[str] = None
+    color: Optional[str] = None
+    grade: Optional[str] = None
     specs: Optional[str] = None
     purchase_cost: float = 0.0
     purchase_source: Optional[str] = None
@@ -414,6 +428,8 @@ class RefurbishedUpdate(BaseModel):
     brand: Optional[str] = None
     model: Optional[str] = None
     serial_or_imei: Optional[str] = None
+    color: Optional[str] = None
+    grade: Optional[str] = None
     specs: Optional[str] = None
     purchase_cost: Optional[float] = None
     purchase_source: Optional[str] = None
@@ -436,6 +452,55 @@ class RefurbSellIn(BaseModel):
     customer_name: Optional[str] = None
     payment_method: str = "contanti"
     notes: Optional[str] = None
+
+
+class BrandIn(BaseModel):
+    name: str
+
+
+class ModelIn(BaseModel):
+    brand: str
+    name: str
+    code: Optional[str] = None
+    device_type: Optional[str] = None
+
+
+DEVICE_CATALOG = {
+    "Apple": [
+        ("iPhone 11", "A2221"), ("iPhone 12", "A2403"), ("iPhone 12 Pro", "A2407"), ("iPhone 13", "A2633"),
+        ("iPhone 13 Pro", "A2638"), ("iPhone 14", "A2882"), ("iPhone 14 Pro", "A2890"), ("iPhone 15", "A3090"),
+        ("iPhone 15 Pro", "A3102"), ("iPhone 16", "A3287"), ("iPhone 16 Pro", "A3293"), ("iPhone SE 2022", "A2783"),
+        ("iPad 9ª gen", "A2602"), ("iPad 10ª gen", "A2696"), ("iPad Air 5", "A2588"), ("iPad Pro 11 M2", "A2759"),
+        ("MacBook Air 13 M1", "A2337"), ("MacBook Air 13 M2", "A2681"), ("MacBook Pro 13 M1", "A2338"),
+        ("MacBook Pro 14 M3", "A2918"), ("MacBook Pro 16 M3", "A2991"),
+    ],
+    "Samsung": [
+        ("Galaxy S21", "SM-G991B"), ("Galaxy S22", "SM-S901B"), ("Galaxy S23", "SM-S911B"), ("Galaxy S23 Ultra", "SM-S918B"),
+        ("Galaxy S24", "SM-S921B"), ("Galaxy S24 Ultra", "SM-S928B"), ("Galaxy S25", "SM-S931B"),
+        ("Galaxy A14", "SM-A145F"), ("Galaxy A34", "SM-A346B"), ("Galaxy A54", "SM-A546B"), ("Galaxy A55", "SM-A556B"),
+        ("Galaxy Z Flip5", "SM-F731B"), ("Galaxy Z Fold5", "SM-F946B"), ("Galaxy Tab A9", "SM-X110"), ("Galaxy Tab S9", "SM-X710"),
+    ],
+    "Xiaomi": [
+        ("Redmi Note 12", "23021RAAEG"), ("Redmi Note 13", "23124RA7EO"), ("Redmi Note 13 Pro", "2312DRA50G"),
+        ("Xiaomi 13", "2211133G"), ("Xiaomi 14", "23127PN0CG"), ("Poco X6 Pro", "2311DRK48G"), ("Poco F5", "23049PCD8G"),
+    ],
+    "Huawei": [("P30 Pro", "VOG-L29"), ("P40 Lite", "JNY-LX1"), ("Nova 9", "NAM-LX9"), ("MateBook D15", "BoDE-WDH9")],
+    "Google": [("Pixel 6", "GB7N6"), ("Pixel 7", "GVU6C"), ("Pixel 7a", "GWKK3"), ("Pixel 8", "GKWS6"), ("Pixel 8 Pro", "GC3VE"), ("Pixel 9", "GUR25")],
+    "OnePlus": [("OnePlus 9", "LE2113"), ("OnePlus 10 Pro", "NE2213"), ("OnePlus 11", "CPH2449"), ("OnePlus Nord 3", "CPH2493")],
+    "Motorola": [("Moto G54", "XT2343-1"), ("Moto G84", "XT2347-2"), ("Edge 40", "XT2303-2"), ("Edge 50 Pro", "XT2403-1")],
+    "Oppo": [("Reno 8", "CPH2359"), ("Reno 10", "CPH2531"), ("A78", "CPH2565"), ("Find X5", "CPH2307")],
+    "Realme": [("Realme 11 Pro", "RMX3771"), ("Realme GT 2", "RMX3311"), ("Realme C55", "RMX3710")],
+    "Lenovo": [("IdeaPad 3 15", "82H8"), ("IdeaPad Slim 5", "82XF"), ("ThinkPad T14 Gen 3", "21AH"), ("ThinkPad X1 Carbon Gen 10", "21CB"), ("Legion 5 15", "82RB"), ("Tab M10 Plus", "TB128FU")],
+    "HP": [("Pavilion 15", "15-eg"), ("HP 15s", "15s-fq"), ("Envy x360 15", "15-ew"), ("EliteBook 840 G9", "6F6D"), ("Victus 16", "16-e0"), ("Omen 16", "16-b0")],
+    "Dell": [("Inspiron 15 3520", "P112F"), ("Inspiron 14 5420", "P157G"), ("XPS 13 9315", "P144G"), ("XPS 15 9520", "P91F"), ("Latitude 5530", "P104F"), ("G15 5520", "P105F")],
+    "Asus": [("VivoBook 15", "X1504"), ("VivoBook S14", "K3402"), ("ZenBook 14 OLED", "UX3402"), ("TUF Gaming A15", "FA507"), ("ROG Strix G16", "G614"), ("ROG Zephyrus G14", "GA402")],
+    "Acer": [("Aspire 3", "A315-24P"), ("Aspire 5", "A515-57"), ("Swift 3", "SF314-512"), ("Nitro 5", "AN515-58"), ("Predator Helios 300", "PH315-55")],
+    "MSI": [("Modern 14", "C12M"), ("Katana 15", "B13V"), ("Thin GF63", "12UC"), ("Stealth 16", "A13V")],
+    "Sony": [("PlayStation 4 Slim", "CUH-2216"), ("PlayStation 4 Pro", "CUH-7216"), ("PlayStation 5", "CFI-1216"), ("PlayStation 5 Slim", "CFI-2016"), ("Xperia 5 IV", "XQ-CQ54")],
+    "Nintendo": [("Switch", "HAC-001"), ("Switch V2", "HAC-001(-01)"), ("Switch Lite", "HDH-001"), ("Switch OLED", "HEG-001")],
+    "Microsoft": [("Xbox One S", "1681"), ("Xbox Series S", "1883"), ("Xbox Series X", "1882"), ("Surface Pro 9", "1996"), ("Surface Laptop 5", "1950")],
+    "LG": [("TV 55UQ7500", "55UQ75006LF"), ("Monitor 27GL850", "27GL850-B")],
+}
 
 
 # ---------- Auth endpoints ----------
@@ -606,6 +671,8 @@ async def create_repair(body: RepairIn, user: dict = Depends(get_current_user)):
     seq = await next_sequence("repair")
     ticket = f"RIP-{seq:05d}"
     obj = Repair(ticket_number=ticket, **body.model_dump())
+    if not obj.received_at:
+        obj.received_at = obj.created_at
     await db.repairs.insert_one(obj.model_dump())
     return obj
 
@@ -1047,6 +1114,103 @@ async def delete_refurbished(ref_id: str, user: dict = Depends(get_current_user)
     return {"ok": True}
 
 
+# ---------- Device catalog ----------
+@api.get("/catalog/brands")
+async def list_brands(user: dict = Depends(get_current_user)):
+    items = await db.device_brands.find({}).sort("name", 1).to_list(500)
+    return [clean(i) for i in items]
+
+
+@api.post("/catalog/brands")
+async def create_brand(body: BrandIn, user: dict = Depends(get_current_user)):
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(400, "Nome marca obbligatorio")
+    existing = await db.device_brands.find_one({"name": {"$regex": f"^{re.escape(name)}$", "$options": "i"}})
+    if existing:
+        return clean(existing)
+    doc = {"id": new_id(), "name": name, "custom": True, "created_at": now_iso()}
+    await db.device_brands.insert_one(doc)
+    return clean(doc)
+
+
+@api.delete("/catalog/brands/{brand_id}")
+async def delete_brand(brand_id: str, user: dict = Depends(get_current_user)):
+    b = await db.device_brands.find_one({"id": brand_id})
+    if b:
+        await db.device_models.delete_many({"brand": b["name"]})
+        await db.device_brands.delete_one({"id": brand_id})
+    return {"ok": True}
+
+
+@api.get("/catalog/models")
+async def list_models(user: dict = Depends(get_current_user), brand: Optional[str] = None):
+    query = {"brand": brand} if brand else {}
+    items = await db.device_models.find(query).sort("name", 1).to_list(2000)
+    return [clean(i) for i in items]
+
+
+@api.post("/catalog/models")
+async def create_model(body: ModelIn, user: dict = Depends(get_current_user)):
+    name = body.name.strip()
+    if not name or not body.brand.strip():
+        raise HTTPException(400, "Marca e modello obbligatori")
+    await create_brand(BrandIn(name=body.brand), user)
+    existing = await db.device_models.find_one({"brand": body.brand, "name": {"$regex": f"^{re.escape(name)}$", "$options": "i"}})
+    if existing:
+        return clean(existing)
+    doc = {"id": new_id(), "brand": body.brand.strip(), "name": name, "code": (body.code or "").strip() or None,
+           "device_type": body.device_type, "custom": True, "created_at": now_iso()}
+    await db.device_models.insert_one(doc)
+    return clean(doc)
+
+
+@api.delete("/catalog/models/{model_id}")
+async def delete_model(model_id: str, user: dict = Depends(get_current_user)):
+    await db.device_models.delete_one({"id": model_id})
+    return {"ok": True}
+
+
+# ---------- Device history by serial ----------
+@api.get("/devices/history")
+async def device_history(serial: str, exclude_id: Optional[str] = None, user: dict = Depends(get_current_user)):
+    s = serial.strip()
+    if len(s) < 4:
+        return {"repairs": [], "refurbished": []}
+    rx = {"$regex": f"^{re.escape(s)}$", "$options": "i"}
+    repairs = await db.repairs.find({"serial_or_imei": rx, "id": {"$ne": exclude_id}}).sort("created_at", -1).to_list(50)
+    refurb = await db.refurbished.find({"serial_or_imei": rx, "id": {"$ne": exclude_id}}).sort("created_at", -1).to_list(50)
+    return {
+        "repairs": [{k: r.get(k) for k in ("id", "ticket_number", "status", "problem", "diagnosis", "customer_name",
+                                          "device_brand", "device_model", "final_price", "created_at", "delivered_at")} for r in repairs],
+        "refurbished": [{k: r.get(k) for k in ("id", "code", "status", "brand", "model", "purchase_cost", "sale_price", "created_at")} for r in refurb],
+    }
+
+
+# ---------- Cash reference ----------
+@api.get("/cash/{mov_id}/reference")
+async def cash_reference(mov_id: str, user: dict = Depends(get_current_user)):
+    m = await db.cash_movements.find_one({"id": mov_id})
+    if not m:
+        raise HTTPException(404, "Movimento non trovato")
+    ref = m.get("reference_id")
+    if not ref:
+        return {"type": None, "data": None}
+    r = await db.repairs.find_one({"id": ref})
+    if r:
+        return {"type": "repair", "data": clean(r)}
+    s = await db.sales.find_one({"id": ref})
+    if s:
+        return {"type": "sale", "data": clean(s)}
+    o = await db.purchase_orders.find_one({"id": ref})
+    if o:
+        return {"type": "order", "data": clean(o)}
+    d = await db.refurbished.find_one({"$or": [{"id": ref}, {"refurb_costs.id": ref}]})
+    if d:
+        return {"type": "refurbished", "data": await enrich_refurb(d)}
+    return {"type": None, "data": None}
+
+
 # ---------- Reports / Dashboard ----------
 @api.get("/reports/dashboard")
 async def dashboard(user: dict = Depends(get_current_user)):
@@ -1117,6 +1281,17 @@ async def startup():
     await db.repairs.create_index("ticket_number")
     await db.sales.create_index("invoice_number")
     await db.cash_movements.create_index("date")
+    await db.device_models.create_index("brand")
+
+    if await db.device_brands.count_documents({}) == 0:
+        brands, models = [], []
+        for brand, items in DEVICE_CATALOG.items():
+            brands.append({"id": new_id(), "name": brand, "custom": False, "created_at": now_iso()})
+            for name, code in items:
+                models.append({"id": new_id(), "brand": brand, "name": name, "code": code, "custom": False, "created_at": now_iso()})
+        await db.device_brands.insert_many(brands)
+        await db.device_models.insert_many(models)
+        logger.info(f"Catalogo dispositivi inizializzato: {len(brands)} marche, {len(models)} modelli")
 
     admin_email = os.environ["ADMIN_EMAIL"].lower()
     admin_password = os.environ["ADMIN_PASSWORD"]

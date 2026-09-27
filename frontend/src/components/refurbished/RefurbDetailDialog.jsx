@@ -19,6 +19,7 @@ import {
 import { toast } from "sonner";
 import { currency, formatDate, REFURB_STATUS } from "@/lib/format";
 import { StatusBadge } from "@/components/StatusBadge";
+import { CustomerSelect } from "@/components/CustomerSelect";
 import {
     ShoppingBag,
     Wrench,
@@ -138,7 +139,13 @@ export function RefurbDetailDialog({ item, onOpenChange, onChanged }) {
                     <Stat label={item.status === "venduto" ? "Venduto a" : "Prezzo obiettivo"} value={currency(item.status === "venduto" ? item.sale_price : item.target_price)} />
                 </div>
 
-                {item.specs && <p className="text-sm text-zinc-300">{item.specs}</p>}
+                {(item.specs || item.color || item.grade) && (
+                    <p className="text-sm text-zinc-300 flex flex-wrap gap-2 items-center">
+                        {item.grade && <span className="px-2 py-0.5 rounded-md border border-primary/40 bg-primary/10 text-primary font-mono text-xs" data-testid="refurb-grade">Grado {item.grade}</span>}
+                        {item.color && <span className="text-muted-foreground">{item.color}</span>}
+                        {item.specs && <span>{item.specs}</span>}
+                    </p>
+                )}
 
                 <div>
                     <div className="eyebrow mb-3">Storia del dispositivo</div>
@@ -248,21 +255,14 @@ export function RefurbDetailDialog({ item, onOpenChange, onChanged }) {
                                     </div>
                                     <div>
                                         <Label className="eyebrow">Cliente</Label>
-                                        <Select
-                                            value={sell.customer_id || "none"}
-                                            onValueChange={(v) => {
-                                                const c = customers.find((x) => x.id === v);
-                                                setSell({ ...sell, customer_id: v === "none" ? "" : v, customer_name: c?.name || "" });
-                                            }}
-                                        >
-                                            <SelectTrigger><SelectValue placeholder="walk-in" /></SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="none">— walk-in —</SelectItem>
-                                                {customers.map((c) => (
-                                                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
+                                        <CustomerSelect
+                                            customers={customers}
+                                            value={sell.customer_id}
+                                            testId="sell-customer-select"
+                                            noneLabel="— walk-in —"
+                                            onCreated={(c) => setCustomers((prev) => [c, ...prev])}
+                                            onChange={(id, c) => setSell({ ...sell, customer_id: id, customer_name: c?.name || "" })}
+                                        />
                                     </div>
                                     <div className="flex items-center justify-between text-sm">
                                         <span className="text-muted-foreground">Margine risultante</span>

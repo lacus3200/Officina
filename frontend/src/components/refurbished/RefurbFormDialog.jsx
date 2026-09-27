@@ -19,6 +19,8 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { DEVICE_TYPES, REFURB_STATUS } from "@/lib/format";
+import { DeviceBrandModelFields } from "@/components/DeviceBrandModelFields";
+import { SerialHistoryAlert } from "@/components/SerialHistoryAlert";
 
 const EMPTY = {
     device_type: "Smartphone",
@@ -26,6 +28,8 @@ const EMPTY = {
     model: "",
     serial_or_imei: "",
     specs: "",
+    color: "",
+    grade: "",
     purchase_cost: 0,
     purchase_source: "",
     supplier_id: "",
@@ -100,19 +104,17 @@ export function RefurbFormDialog({ open, onOpenChange, editing, onSaved }) {
                                 </SelectContent>
                             </Select>
                         </div>
-                        <div>
-                            <Label className="eyebrow">Marca</Label>
-                            <Input data-testid="refurb-brand-input" value={form.brand} onChange={set("brand")} />
-                        </div>
-                        <div>
-                            <Label className="eyebrow">Modello</Label>
-                            <Input data-testid="refurb-model-input" value={form.model} onChange={set("model")} />
-                        </div>
+                        <DeviceBrandModelFields
+                            brand={form.brand}
+                            model={form.model}
+                            deviceType={form.device_type}
+                            onChange={({ brand, model }) => setForm({ ...form, brand, model })}
+                        />
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                         <div>
                             <Label className="eyebrow">Seriale / IMEI</Label>
-                            <Input value={form.serial_or_imei} onChange={set("serial_or_imei")} />
+                            <Input value={form.serial_or_imei} onChange={set("serial_or_imei")} data-testid="refurb-serial-input" />
                         </div>
                         <div>
                             <Label className="eyebrow">Stato</Label>
@@ -130,8 +132,29 @@ export function RefurbFormDialog({ open, onOpenChange, editing, onSaved }) {
                             </Select>
                         </div>
                     </div>
+                    <SerialHistoryAlert serial={form.serial_or_imei} excludeId={editing?.id} />
+                    <div className="grid grid-cols-3 gap-3">
+                        <div className="col-span-2">
+                            <Label className="eyebrow">Colore</Label>
+                            <Input value={form.color} onChange={set("color")} placeholder="Es. Nero siderale" data-testid="refurb-color-input" />
+                        </div>
+                        <div>
+                            <Label className="eyebrow">Grado estetico</Label>
+                            <Select value={form.grade || "none"} onValueChange={(v) => setForm({ ...form, grade: v === "none" ? "" : v })}>
+                                <SelectTrigger data-testid="refurb-grade-select"><SelectValue placeholder="—" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="none">—</SelectItem>
+                                    <SelectItem value="A+">A+ · Come nuovo</SelectItem>
+                                    <SelectItem value="A">A · Perfetto</SelectItem>
+                                    <SelectItem value="B">B · Lievi segni</SelectItem>
+                                    <SelectItem value="C">C · Segni evidenti</SelectItem>
+                                    <SelectItem value="D">D · Danneggiato / per ricambi</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
                     <div>
-                        <Label className="eyebrow">Specifiche (RAM, storage, colore…)</Label>
+                        <Label className="eyebrow">Specifiche (RAM, storage…)</Label>
                         <Input value={form.specs} onChange={set("specs")} />
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
