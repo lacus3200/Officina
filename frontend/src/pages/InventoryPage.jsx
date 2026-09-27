@@ -23,6 +23,7 @@ import { Plus, Search, Pencil, Trash2, Printer, AlertTriangle } from "lucide-rea
 import { toast } from "sonner";
 import { currency, formatDate, PART_CONDITION, PART_STATUS } from "@/lib/format";
 import { printPartLabel } from "@/lib/pdf";
+import { PartNameSelect, CompatibleModelsField } from "@/components/PartCatalogFields";
 
 const EMPTY = {
     name: "",
@@ -39,6 +40,7 @@ const EMPTY = {
     notes: "",
     entered_at: "",
     exited_at: "",
+    compatible_models: [],
 };
 
 const toDateInput = (iso) => (iso ? iso.slice(0, 10) : "");
@@ -147,18 +149,22 @@ export default function InventoryPage() {
                         <div className="grid grid-cols-2 gap-4">
                             <div className="col-span-2">
                                 <Label className="eyebrow">Nome *</Label>
-                                <Input
-                                    data-testid="part-name-input"
+                                <PartNameSelect
                                     value={form.name}
-                                    onChange={(e) =>
-                                        setForm({ ...form, name: e.target.value })
+                                    onSelect={(name, category) =>
+                                        setForm({ ...form, name, category: category || form.category })
                                     }
                                 />
                             </div>
+                            <CompatibleModelsField
+                                value={form.compatible_models || []}
+                                onChange={(compatible_models) => setForm({ ...form, compatible_models })}
+                            />
                             <div>
                                 <Label className="eyebrow">Categoria</Label>
                                 <Input
-                                    value={form.category}
+                                    data-testid="part-category-input"
+                                    value={form.category || ""}
                                     placeholder="Batteria, Schermo, SSD…"
                                     onChange={(e) =>
                                         setForm({ ...form, category: e.target.value })
@@ -369,6 +375,11 @@ export default function InventoryPage() {
                                             <div className="text-xs text-muted-foreground font-mono">
                                                 {p.sku || "—"}
                                             </div>
+                                            {p.compatible_models?.length > 0 && (
+                                                <div className="text-[11px] text-sky-400/80 truncate max-w-xs" title={p.compatible_models.join(", ")}>
+                                                    {p.compatible_models.join(" · ")}
+                                                </div>
+                                            )}
                                         </td>
                                         <td className="px-4 py-3 text-muted-foreground">
                                             {p.category || "—"}

@@ -136,6 +136,7 @@ class Part(BaseModel):
     notes: Optional[str] = None
     entered_at: Optional[str] = None
     exited_at: Optional[str] = None
+    compatible_models: List[str] = []
     created_at: str = Field(default_factory=now_iso)
     updated_at: str = Field(default_factory=now_iso)
 
@@ -155,6 +156,7 @@ class PartIn(BaseModel):
     notes: Optional[str] = None
     entered_at: Optional[str] = None
     exited_at: Optional[str] = None
+    compatible_models: List[str] = []
 
 
 RepairStatus = Literal["in_attesa", "in_lavorazione", "completata", "consegnata", "annullata"]
@@ -471,6 +473,49 @@ class ColorIn(BaseModel):
     color: str
 
 
+class PartTemplateIn(BaseModel):
+    name: str
+    category: Optional[str] = None
+
+
+PART_CATEGORY_RULES = [
+    ("Schermo", ["schermo", "display", "lcd", "oled", "vetro", "touch", "digitizer"]),
+    ("Batteria", ["batteria", "battery", "accumulatore"]),
+    ("Connettori", ["connettore", "dock", "porta", "usb", "hdmi", "jack", "lightning", "flex ricarica"]),
+    ("Fotocamera", ["fotocamera", "camera", "lente"]),
+    ("Audio", ["altoparlante", "speaker", "microfono", "buzzer", "auricolare"]),
+    ("Storage", ["ssd", "hdd", "hard disk", "nvme", "m.2", "emmc", "memoria"]),
+    ("RAM", ["ram", "ddr4", "ddr5", "sodimm"]),
+    ("Alimentazione", ["alimentatore", "caricabatterie", "caricatore", "cavo", "power supply", "dc jack"]),
+    ("Raffreddamento", ["ventola", "fan", "dissipatore", "pasta termica", "heatsink"]),
+    ("Tastiera / Input", ["tastiera", "keyboard", "trackpad", "touchpad", "tasto", "pulsante", "stick", "joystick"]),
+    ("Scocca", ["scocca", "cover", "back cover", "frame", "telaio", "cornice", "cerniera", "hinge"]),
+    ("Scheda", ["scheda", "logic board", "motherboard", "mainboard", "chip", "ic", "controller"]),
+    ("Sensori / Flex", ["flex", "sensore", "face id", "touch id", "antenna", "vibrazione", "taptic"]),
+]
+
+
+def guess_part_category(name: str) -> Optional[str]:
+    n = name.lower()
+    for cat, keys in PART_CATEGORY_RULES:
+        if any(k in n for k in keys):
+            return cat
+    return None
+
+
+PART_TEMPLATE_SEED = [
+    "Schermo LCD completo", "Schermo OLED completo", "Vetro posteriore", "Vetro fotocamera", "Batteria",
+    "Connettore di ricarica (flex dock)", "Fotocamera posteriore", "Fotocamera frontale", "Altoparlante", "Microfono",
+    "Auricolare (speaker superiore)", "Flex tasto power", "Flex tasto volume", "Flex Face ID / sensore prossimità",
+    "Motore vibrazione (Taptic)", "Antenna Wi-Fi / Bluetooth", "Lettore SIM", "Scocca / frame", "Back cover",
+    "SSD NVMe 512GB", "SSD NVMe 1TB", "SSD SATA 2.5\" 500GB", "RAM DDR4 8GB SO-DIMM", "RAM DDR4 16GB SO-DIMM", "RAM DDR5 16GB SO-DIMM",
+    "Tastiera notebook", "Trackpad", "Ventola CPU", "Pasta termica", "Cerniere schermo", "Schermo notebook 15.6\" FHD",
+    "Schermo notebook 14\" FHD", "Alimentatore notebook 65W", "Alimentatore USB-C 65W", "Cavo Lightning", "Cavo USB-C",
+    "Connettore DC jack notebook", "Porta HDMI console", "Stick analogico joypad", "Ventola console", "Alimentatore console",
+    "Lettore ottico console", "Pad conduttivi joypad",
+]
+
+
 class ServiceIn(BaseModel):
     name: str
     category: Optional[str] = None
@@ -685,6 +730,8 @@ async def list_parts(user: dict = Depends(get_current_user), q: Optional[str] = 
 @api.post("/parts")
 async def create_part(body: PartIn, user: dict = Depends(get_current_user)):
     obj = Part(**body.model_dump())
+    if not obj.category:
+        obj.category = guess_part_category(obj.name)
     await db.parts.insert_one(obj.model_dump())
     return obj
 
@@ -1293,6 +1340,38 @@ async def list_colors(user: dict = Depends(get_current_user), brand: Optional[st
     return {"colors": colors, "model_id": m["id"] if m else None}
 
 
+# ---------- Part templates ----------
+@api.get("/catalog/parts")
+async def list_part_templates(user: dict = Depends(get_current_user)):
+    items = await db.part_templates.find({}).sort([("category", 1), ("name", 1)]).to_list(1000)
+    return [clean(i) for i in items]
+
+
+@api.post("/catalog/parts")
+async def create_part_template(body: PartTemplateIn, user: dict = Depends(get_current_user)):
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(400, "Nome ricambio obbligatorio")
+    existing = await db.part_templates.find_one({"name": {"$regex": f"^{re.escape(name)}$", "$options": "i"}})
+    if existing:
+        return clean(existing)
+    doc = {"id": new_id(), "name": name, "category": (body.category or "").strip() or guess_part_category(name) or "Altro",
+           "custom": True, "created_at": now_iso()}
+    await db.part_templates.insert_one(doc)
+    return clean(doc)
+
+
+@api.delete("/catalog/parts/{tpl_id}")
+async def delete_part_template(tpl_id: str, user: dict = Depends(get_current_user)):
+    await db.part_templates.delete_one({"id": tpl_id})
+    return {"ok": True}
+
+
+@api.get("/catalog/parts/guess-category")
+async def guess_category(name: str, user: dict = Depends(get_current_user)):
+    return {"category": guess_part_category(name)}
+
+
 # ---------- Services price list ----------
 @api.get("/services")
 async def list_services(user: dict = Depends(get_current_user), q: Optional[str] = None, device_type: Optional[str] = None):
@@ -1453,6 +1532,13 @@ async def startup():
             Service(name=n, category=c, device_type=t, price=p).model_dump() for n, c, t, p in SERVICE_SEED
         ])
         logger.info("Listino interventi inizializzato")
+
+    if await db.part_templates.count_documents({}) == 0:
+        await db.part_templates.insert_many([
+            {"id": new_id(), "name": n, "category": guess_part_category(n) or "Altro", "custom": False, "created_at": now_iso()}
+            for n in PART_TEMPLATE_SEED
+        ])
+        logger.info("Catalogo ricambi inizializzato")
 
     admin_email = os.environ["ADMIN_EMAIL"].lower()
     admin_password = os.environ["ADMIN_PASSWORD"]
