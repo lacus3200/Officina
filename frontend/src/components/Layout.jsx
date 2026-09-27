@@ -11,6 +11,8 @@ import {
     BarChart3,
     LogOut,
     Menu,
+    RefreshCw,
+    Truck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -22,6 +24,8 @@ const NAV = [
     { to: "/clienti", label: "Clienti", icon: Users, testId: "nav-customers" },
     { to: "/magazzino", label: "Magazzino", icon: Package, testId: "nav-inventory" },
     { to: "/vendite", label: "Vendite", icon: ShoppingCart, testId: "nav-sales" },
+    { to: "/ricondizionati", label: "Ricondizionati", icon: RefreshCw, testId: "nav-refurbished" },
+    { to: "/fornitori", label: "Fornitori & Ordini", icon: Truck, testId: "nav-suppliers" },
     { to: "/cassa", label: "Cassa", icon: Wallet, testId: "nav-cash" },
     { to: "/report", label: "Report", icon: BarChart3, testId: "nav-reports" },
 ];

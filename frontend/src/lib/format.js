@@ -66,6 +66,24 @@ export const PART_STATUS = {
     difettoso: { label: "Difettoso", color: "bg-red-950 text-red-300 border-red-800" },
 };
 
+export const REFURB_STATUS = {
+    acquistato: { label: "Acquistato", color: "bg-zinc-800 text-zinc-200 border-zinc-700" },
+    in_ricondizionamento: {
+        label: "In ricondizionamento",
+        color: "bg-amber-950 text-amber-300 border-amber-800",
+    },
+    pronto: { label: "Pronto alla vendita", color: "bg-sky-950 text-sky-300 border-sky-800" },
+    venduto: { label: "Venduto", color: "bg-emerald-950 text-emerald-300 border-emerald-800" },
+};
+
+export const ORDER_STATUS = {
+    bozza: { label: "Bozza", color: "bg-zinc-800 text-zinc-200 border-zinc-700" },
+    ordinato: { label: "Ordinato", color: "bg-amber-950 text-amber-300 border-amber-800" },
+    parziale: { label: "Arrivo parziale", color: "bg-sky-950 text-sky-300 border-sky-800" },
+    ricevuto: { label: "Ricevuto", color: "bg-emerald-950 text-emerald-300 border-emerald-800" },
+    annullato: { label: "Annullato", color: "bg-red-950 text-red-300 border-red-800" },
+};
+
 export const DEVICE_TYPES = [
     "PC / Notebook",
     "Smartphone",

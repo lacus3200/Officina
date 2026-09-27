@@ -275,6 +275,169 @@ class CashMovementIn(BaseModel):
     date: Optional[str] = None
 
 
+class Supplier(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=new_id)
+    name: str
+    contact_name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    website: Optional[str] = None
+    vat_number: Optional[str] = None
+    address: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: str = Field(default_factory=now_iso)
+
+
+class SupplierIn(BaseModel):
+    name: str
+    contact_name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    website: Optional[str] = None
+    vat_number: Optional[str] = None
+    address: Optional[str] = None
+    notes: Optional[str] = None
+
+
+OrderStatus = Literal["bozza", "ordinato", "parziale", "ricevuto", "annullato"]
+
+
+class OrderItem(BaseModel):
+    part_id: Optional[str] = None
+    description: str
+    quantity: int = 1
+    unit_cost: float = 0.0
+    received_qty: int = 0
+
+
+class PurchaseOrder(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=new_id)
+    order_number: str
+    supplier_id: Optional[str] = None
+    supplier_name: Optional[str] = None
+    items: List[OrderItem] = []
+    status: OrderStatus = "ordinato"
+    total: float = 0.0
+    expected_date: Optional[str] = None
+    tracking_code: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: str = Field(default_factory=now_iso)
+    updated_at: str = Field(default_factory=now_iso)
+    received_at: Optional[str] = None
+
+
+class PurchaseOrderIn(BaseModel):
+    supplier_id: Optional[str] = None
+    supplier_name: Optional[str] = None
+    items: List[OrderItem] = []
+    status: OrderStatus = "ordinato"
+    expected_date: Optional[str] = None
+    tracking_code: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class PurchaseOrderUpdate(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    supplier_id: Optional[str] = None
+    supplier_name: Optional[str] = None
+    items: Optional[List[OrderItem]] = None
+    status: Optional[OrderStatus] = None
+    expected_date: Optional[str] = None
+    tracking_code: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class ReceiveItem(BaseModel):
+    index: int
+    quantity: int
+
+
+class ReceiveIn(BaseModel):
+    items: List[ReceiveItem]
+
+
+RefurbStatus = Literal["acquistato", "in_ricondizionamento", "pronto", "venduto"]
+
+
+class RefurbCost(BaseModel):
+    id: str = Field(default_factory=new_id)
+    description: str
+    amount: float = 0.0
+    date: str = Field(default_factory=now_iso)
+
+
+class Refurbished(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=new_id)
+    code: str
+    device_type: str
+    brand: Optional[str] = None
+    model: Optional[str] = None
+    serial_or_imei: Optional[str] = None
+    specs: Optional[str] = None
+    purchase_cost: float = 0.0
+    purchase_source: Optional[str] = None
+    supplier_id: Optional[str] = None
+    purchase_date: str = Field(default_factory=now_iso)
+    target_price: float = 0.0
+    status: RefurbStatus = "acquistato"
+    repair_id: Optional[str] = None
+    refurb_costs: List[RefurbCost] = []
+    sale_id: Optional[str] = None
+    sale_price: float = 0.0
+    sold_at: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: str = Field(default_factory=now_iso)
+    updated_at: str = Field(default_factory=now_iso)
+
+
+class RefurbishedIn(BaseModel):
+    device_type: str
+    brand: Optional[str] = None
+    model: Optional[str] = None
+    serial_or_imei: Optional[str] = None
+    specs: Optional[str] = None
+    purchase_cost: float = 0.0
+    purchase_source: Optional[str] = None
+    supplier_id: Optional[str] = None
+    purchase_date: Optional[str] = None
+    target_price: float = 0.0
+    status: RefurbStatus = "acquistato"
+    notes: Optional[str] = None
+
+
+class RefurbishedUpdate(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    device_type: Optional[str] = None
+    brand: Optional[str] = None
+    model: Optional[str] = None
+    serial_or_imei: Optional[str] = None
+    specs: Optional[str] = None
+    purchase_cost: Optional[float] = None
+    purchase_source: Optional[str] = None
+    supplier_id: Optional[str] = None
+    purchase_date: Optional[str] = None
+    target_price: Optional[float] = None
+    status: Optional[RefurbStatus] = None
+    repair_id: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class RefurbCostIn(BaseModel):
+    description: str
+    amount: float = 0.0
+
+
+class RefurbSellIn(BaseModel):
+    sale_price: float
+    customer_id: Optional[str] = None
+    customer_name: Optional[str] = None
+    payment_method: str = "contanti"
+    notes: Optional[str] = None
+
+
 # ---------- Auth endpoints ----------
 def set_auth_cookie(response: Response, token: str) -> None:
     response.set_cookie(
@@ -567,6 +730,320 @@ async def create_cash(body: CashMovementIn, user: dict = Depends(get_current_use
 @api.delete("/cash/{mov_id}")
 async def delete_cash(mov_id: str, user: dict = Depends(get_current_user)):
     await db.cash_movements.delete_one({"id": mov_id})
+    return {"ok": True}
+
+
+# ---------- Suppliers ----------
+@api.get("/suppliers")
+async def list_suppliers(user: dict = Depends(get_current_user), q: Optional[str] = None):
+    query = {}
+    if q:
+        query = {"$or": [
+            {"name": {"$regex": q, "$options": "i"}},
+            {"contact_name": {"$regex": q, "$options": "i"}},
+            {"email": {"$regex": q, "$options": "i"}},
+        ]}
+    items = await db.suppliers.find(query).sort("name", 1).to_list(1000)
+    return [clean(i) for i in items]
+
+
+@api.post("/suppliers")
+async def create_supplier(body: SupplierIn, user: dict = Depends(get_current_user)):
+    obj = Supplier(**body.model_dump())
+    await db.suppliers.insert_one(obj.model_dump())
+    return obj
+
+
+@api.put("/suppliers/{supplier_id}")
+async def update_supplier(supplier_id: str, body: SupplierIn, user: dict = Depends(get_current_user)):
+    res = await db.suppliers.update_one({"id": supplier_id}, {"$set": body.model_dump(exclude_unset=True)})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Fornitore non trovato")
+    return clean(await db.suppliers.find_one({"id": supplier_id}))
+
+
+@api.delete("/suppliers/{supplier_id}")
+async def delete_supplier(supplier_id: str, user: dict = Depends(get_current_user)):
+    await db.suppliers.delete_one({"id": supplier_id})
+    return {"ok": True}
+
+
+# ---------- Purchase orders ----------
+def order_total(items: list) -> float:
+    return round(sum(i["quantity"] * i["unit_cost"] for i in items), 2)
+
+
+def derive_order_status(items: list, current: str) -> str:
+    if current == "annullato" or not items:
+        return current
+    total_q = sum(i["quantity"] for i in items)
+    recv = sum(i.get("received_qty", 0) for i in items)
+    if recv <= 0:
+        return current if current in ("bozza", "ordinato") else "ordinato"
+    return "ricevuto" if recv >= total_q else "parziale"
+
+
+@api.get("/purchase-orders")
+async def list_orders(user: dict = Depends(get_current_user), status: Optional[str] = None, supplier_id: Optional[str] = None):
+    query = {}
+    if status:
+        query["status"] = status
+    if supplier_id:
+        query["supplier_id"] = supplier_id
+    items = await db.purchase_orders.find(query).sort("created_at", -1).to_list(2000)
+    return [clean(i) for i in items]
+
+
+@api.post("/purchase-orders")
+async def create_order(body: PurchaseOrderIn, user: dict = Depends(get_current_user)):
+    seq = await next_sequence("purchase_order")
+    data = body.model_dump()
+    data["total"] = order_total(data["items"])
+    obj = PurchaseOrder(order_number=f"ORD-{seq:05d}", **data)
+    await db.purchase_orders.insert_one(obj.model_dump())
+    return obj
+
+
+@api.get("/purchase-orders/{order_id}")
+async def get_order(order_id: str, user: dict = Depends(get_current_user)):
+    o = await db.purchase_orders.find_one({"id": order_id})
+    if not o:
+        raise HTTPException(404, "Ordine non trovato")
+    return clean(o)
+
+
+@api.put("/purchase-orders/{order_id}")
+async def update_order(order_id: str, body: PurchaseOrderUpdate, user: dict = Depends(get_current_user)):
+    existing = await db.purchase_orders.find_one({"id": order_id})
+    if not existing:
+        raise HTTPException(404, "Ordine non trovato")
+    data = body.model_dump(exclude_unset=True)
+    if "items" in data:
+        data["total"] = order_total(data["items"])
+    data["updated_at"] = now_iso()
+    await db.purchase_orders.update_one({"id": order_id}, {"$set": data})
+    return clean(await db.purchase_orders.find_one({"id": order_id}))
+
+
+@api.post("/purchase-orders/{order_id}/receive")
+async def receive_order(order_id: str, body: ReceiveIn, user: dict = Depends(get_current_user)):
+    o = await db.purchase_orders.find_one({"id": order_id})
+    if not o:
+        raise HTTPException(404, "Ordine non trovato")
+    if o["status"] == "annullato":
+        raise HTTPException(400, "Ordine annullato")
+    items = o["items"]
+    spent = 0.0
+    for r in body.items:
+        if r.index < 0 or r.index >= len(items) or r.quantity <= 0:
+            continue
+        it = items[r.index]
+        remaining = it["quantity"] - it.get("received_qty", 0)
+        qty = min(r.quantity, remaining)
+        if qty <= 0:
+            continue
+        it["received_qty"] = it.get("received_qty", 0) + qty
+        spent += qty * it["unit_cost"]
+        if it.get("part_id"):
+            await db.parts.update_one(
+                {"id": it["part_id"]},
+                {"$inc": {"quantity": qty}, "$set": {"status": "disponibile", "updated_at": now_iso()}},
+            )
+    status = derive_order_status(items, o["status"])
+    upd = {"items": items, "status": status, "updated_at": now_iso()}
+    if status == "ricevuto" and not o.get("received_at"):
+        upd["received_at"] = now_iso()
+    await db.purchase_orders.update_one({"id": order_id}, {"$set": upd})
+    if spent > 0:
+        mov = CashMovement(
+            type="uscita",
+            category="acquisto",
+            amount=round(spent, 2),
+            description=f"Ricambi ordine {o['order_number']} · {o.get('supplier_name') or 'fornitore'}",
+            reference_id=order_id,
+        )
+        await db.cash_movements.insert_one(mov.model_dump())
+    return clean(await db.purchase_orders.find_one({"id": order_id}))
+
+
+@api.delete("/purchase-orders/{order_id}")
+async def delete_order(order_id: str, user: dict = Depends(get_current_user)):
+    await db.purchase_orders.delete_one({"id": order_id})
+    await db.cash_movements.delete_many({"reference_id": order_id})
+    return {"ok": True}
+
+
+# ---------- Refurbished devices ----------
+async def enrich_refurb(doc: dict) -> dict:
+    doc = clean(doc)
+    extra_costs = sum(c["amount"] for c in doc.get("refurb_costs", []))
+    parts_cost = 0.0
+    repair = None
+    if doc.get("repair_id"):
+        repair = clean(await db.repairs.find_one({"id": doc["repair_id"]}))
+        if repair:
+            for pu in repair.get("parts_used", []):
+                part = await db.parts.find_one({"id": pu["part_id"]})
+                unit = part["cost_price"] if part else pu.get("unit_price", 0)
+                parts_cost += unit * pu.get("quantity", 1)
+    total_cost = round(doc.get("purchase_cost", 0) + extra_costs + parts_cost, 2)
+    doc["parts_cost"] = round(parts_cost, 2)
+    doc["extra_costs"] = round(extra_costs, 2)
+    doc["total_cost"] = total_cost
+    doc["margin"] = round(doc["sale_price"] - total_cost, 2) if doc.get("status") == "venduto" else None
+    doc["expected_margin"] = round(doc.get("target_price", 0) - total_cost, 2)
+    doc["repair"] = (
+        {"ticket_number": repair["ticket_number"], "status": repair["status"], "problem": repair["problem"]}
+        if repair else None
+    )
+    return doc
+
+
+@api.get("/refurbished")
+async def list_refurbished(user: dict = Depends(get_current_user), status: Optional[str] = None, q: Optional[str] = None):
+    query = {}
+    if status:
+        query["status"] = status
+    if q:
+        query["$or"] = [
+            {"code": {"$regex": q, "$options": "i"}},
+            {"brand": {"$regex": q, "$options": "i"}},
+            {"model": {"$regex": q, "$options": "i"}},
+            {"serial_or_imei": {"$regex": q, "$options": "i"}},
+        ]
+    items = await db.refurbished.find(query).sort("created_at", -1).to_list(2000)
+    return [await enrich_refurb(i) for i in items]
+
+
+@api.get("/refurbished/summary")
+async def refurbished_summary(user: dict = Depends(get_current_user)):
+    items = [await enrich_refurb(i) for i in await db.refurbished.find({}).to_list(5000)]
+    sold = [i for i in items if i["status"] == "venduto"]
+    in_stock = [i for i in items if i["status"] != "venduto"]
+    return {
+        "total": len(items),
+        "in_stock": len(in_stock),
+        "sold": len(sold),
+        "stock_value": round(sum(i["total_cost"] for i in in_stock), 2),
+        "revenue": round(sum(i["sale_price"] for i in sold), 2),
+        "margin": round(sum(i["margin"] or 0 for i in sold), 2),
+    }
+
+
+@api.post("/refurbished")
+async def create_refurbished(body: RefurbishedIn, user: dict = Depends(get_current_user)):
+    seq = await next_sequence("refurbished")
+    data = body.model_dump(exclude_none=True)
+    obj = Refurbished(code=f"RIC-{seq:05d}", **data)
+    await db.refurbished.insert_one(obj.model_dump())
+    if obj.purchase_cost > 0:
+        mov = CashMovement(
+            type="uscita",
+            category="acquisto",
+            amount=obj.purchase_cost,
+            description=f"Acquisto dispositivo {obj.code} · {obj.brand or ''} {obj.model or ''}".strip(),
+            reference_id=obj.id,
+            date=obj.purchase_date,
+        )
+        await db.cash_movements.insert_one(mov.model_dump())
+    return await enrich_refurb(obj.model_dump())
+
+
+@api.get("/refurbished/{ref_id}")
+async def get_refurbished(ref_id: str, user: dict = Depends(get_current_user)):
+    r = await db.refurbished.find_one({"id": ref_id})
+    if not r:
+        raise HTTPException(404, "Dispositivo non trovato")
+    return await enrich_refurb(r)
+
+
+@api.put("/refurbished/{ref_id}")
+async def update_refurbished(ref_id: str, body: RefurbishedUpdate, user: dict = Depends(get_current_user)):
+    existing = await db.refurbished.find_one({"id": ref_id})
+    if not existing:
+        raise HTTPException(404, "Dispositivo non trovato")
+    data = body.model_dump(exclude_unset=True)
+    data["updated_at"] = now_iso()
+    await db.refurbished.update_one({"id": ref_id}, {"$set": data})
+    if "purchase_cost" in data:
+        await db.cash_movements.update_one(
+            {"reference_id": ref_id, "category": "acquisto"},
+            {"$set": {"amount": float(data["purchase_cost"])}},
+        )
+    return await enrich_refurb(await db.refurbished.find_one({"id": ref_id}))
+
+
+@api.post("/refurbished/{ref_id}/costs")
+async def add_refurb_cost(ref_id: str, body: RefurbCostIn, user: dict = Depends(get_current_user)):
+    existing = await db.refurbished.find_one({"id": ref_id})
+    if not existing:
+        raise HTTPException(404, "Dispositivo non trovato")
+    cost = RefurbCost(**body.model_dump())
+    await db.refurbished.update_one(
+        {"id": ref_id},
+        {"$push": {"refurb_costs": cost.model_dump()}, "$set": {"updated_at": now_iso()}},
+    )
+    if cost.amount > 0:
+        mov = CashMovement(
+            type="uscita",
+            category="ricondizionamento",
+            amount=cost.amount,
+            description=f"{existing['code']} · {cost.description}",
+            reference_id=cost.id,
+        )
+        await db.cash_movements.insert_one(mov.model_dump())
+    return await enrich_refurb(await db.refurbished.find_one({"id": ref_id}))
+
+
+@api.delete("/refurbished/{ref_id}/costs/{cost_id}")
+async def delete_refurb_cost(ref_id: str, cost_id: str, user: dict = Depends(get_current_user)):
+    await db.refurbished.update_one({"id": ref_id}, {"$pull": {"refurb_costs": {"id": cost_id}}})
+    await db.cash_movements.delete_many({"reference_id": cost_id})
+    return await enrich_refurb(await db.refurbished.find_one({"id": ref_id}))
+
+
+@api.post("/refurbished/{ref_id}/sell")
+async def sell_refurbished(ref_id: str, body: RefurbSellIn, user: dict = Depends(get_current_user)):
+    existing = await db.refurbished.find_one({"id": ref_id})
+    if not existing:
+        raise HTTPException(404, "Dispositivo non trovato")
+    if existing["status"] == "venduto":
+        raise HTTPException(400, "Dispositivo già venduto")
+    enriched = await enrich_refurb(dict(existing))
+    seq = await next_sequence("sale")
+    desc = f"{existing['code']} · {existing.get('brand') or ''} {existing.get('model') or ''} (ricondizionato)".strip()
+    sale = Sale(
+        invoice_number=f"VEN-{seq:05d}",
+        customer_id=body.customer_id,
+        customer_name=body.customer_name,
+        items=[SaleItem(description=desc, quantity=1, unit_price=body.sale_price)],
+        total=body.sale_price,
+        cost_total=enriched["total_cost"],
+        margin=round(body.sale_price - enriched["total_cost"], 2),
+        payment_method=body.payment_method,
+        notes=body.notes,
+    )
+    await db.sales.insert_one(sale.model_dump())
+    mov = CashMovement(
+        type="entrata", category="vendita", amount=sale.total,
+        description=f"Vendita {sale.invoice_number} · {existing['code']}", reference_id=sale.id,
+    )
+    await db.cash_movements.insert_one(mov.model_dump())
+    await db.refurbished.update_one(
+        {"id": ref_id},
+        {"$set": {"status": "venduto", "sale_id": sale.id, "sale_price": body.sale_price,
+                  "sold_at": now_iso(), "updated_at": now_iso()}},
+    )
+    return await enrich_refurb(await db.refurbished.find_one({"id": ref_id}))
+
+
+@api.delete("/refurbished/{ref_id}")
+async def delete_refurbished(ref_id: str, user: dict = Depends(get_current_user)):
+    existing = await db.refurbished.find_one({"id": ref_id})
+    if existing:
+        ids = [ref_id] + [c["id"] for c in existing.get("refurb_costs", [])]
+        await db.cash_movements.delete_many({"reference_id": {"$in": ids}})
+    await db.refurbished.delete_one({"id": ref_id})
     return {"ok": True}
 
 

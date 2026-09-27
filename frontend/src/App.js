@@ -10,6 +10,8 @@ import InventoryPage from "@/pages/InventoryPage";
 import SalesPage from "@/pages/SalesPage";
 import CashPage from "@/pages/CashPage";
 import ReportsPage from "@/pages/ReportsPage";
+import RefurbishedPage from "@/pages/RefurbishedPage";
+import SuppliersPage from "@/pages/SuppliersPage";
 import Layout from "@/components/Layout";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -96,6 +98,22 @@ function AppRoutes() {
                 element={
                     <Protected>
                         <ReportsPage />
+                    </Protected>
+                }
+            />
+            <Route
+                path="/ricondizionati"
+                element={
+                    <Protected>
+                        <RefurbishedPage />
+                    </Protected>
+                }
+            />
+            <Route
+                path="/fornitori"
+                element={
+                    <Protected>
+                        <SuppliersPage />
                     </Protected>
                 }
             />
