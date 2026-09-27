@@ -167,6 +167,12 @@ class RepairPartUsed(BaseModel):
     unit_price: float = 0.0
 
 
+class RepairService(BaseModel):
+    service_id: Optional[str] = None
+    name: str
+    price: float = 0.0
+
+
 class Repair(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=new_id)
@@ -182,6 +188,7 @@ class Repair(BaseModel):
     status: RepairStatus = "in_attesa"
     estimate: float = 0.0
     parts_used: List[RepairPartUsed] = []
+    services: List[RepairService] = []
     labor_cost: float = 0.0
     final_price: float = 0.0
     paid: bool = False
@@ -204,6 +211,7 @@ class RepairIn(BaseModel):
     status: RepairStatus = "in_attesa"
     estimate: float = 0.0
     parts_used: List[RepairPartUsed] = []
+    services: List[RepairService] = []
     labor_cost: float = 0.0
     final_price: float = 0.0
     paid: bool = False
@@ -225,6 +233,7 @@ class RepairUpdate(BaseModel):
     status: Optional[RepairStatus] = None
     estimate: Optional[float] = None
     parts_used: Optional[List[RepairPartUsed]] = None
+    services: Optional[List[RepairService]] = None
     labor_cost: Optional[float] = None
     final_price: Optional[float] = None
     paid: Optional[bool] = None
@@ -456,6 +465,62 @@ class RefurbSellIn(BaseModel):
 
 class BrandIn(BaseModel):
     name: str
+
+
+class ColorIn(BaseModel):
+    color: str
+
+
+class ServiceIn(BaseModel):
+    name: str
+    category: Optional[str] = None
+    device_type: Optional[str] = None
+    price: float = 0.0
+    duration_minutes: Optional[int] = None
+    notes: Optional[str] = None
+
+
+class Service(ServiceIn):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=new_id)
+    created_at: str = Field(default_factory=now_iso)
+
+
+class OpenRepairIn(BaseModel):
+    problem: Optional[str] = None
+
+
+BRAND_COLORS = {
+    "Apple": ["Nero", "Bianco", "Mezzanotte", "Galassia", "Blu", "Rosso", "Verde", "Viola", "Giallo", "Rosa", "Grigio siderale", "Argento", "Oro", "Titanio naturale", "Titanio nero", "Titanio bianco", "Titanio blu"],
+    "Samsung": ["Phantom Black", "Phantom White", "Cream", "Green", "Lavender", "Graphite", "Violet", "Awesome Black", "Awesome Silver", "Awesome Lime", "Titanium Gray", "Navy", "Marble Gray"],
+    "Xiaomi": ["Nero", "Bianco", "Blu", "Verde", "Grigio", "Viola", "Oro"],
+    "Google": ["Obsidian", "Snow", "Hazel", "Lemongrass", "Bay", "Porcelain", "Rose", "Sage"],
+    "Sony": ["Nero", "Bianco"],
+    "Nintendo": ["Neon Rosso/Blu", "Grigio", "Bianco", "Turchese", "Corallo", "Giallo"],
+    "Microsoft": ["Nero carbonio", "Bianco robot", "Platino"],
+}
+DEFAULT_COLORS = ["Nero", "Bianco", "Grigio", "Argento", "Blu", "Rosso", "Verde", "Oro", "Rosa", "Viola"]
+SERVICE_SEED = [
+    ("Diagnosi / preventivo", "Generale", None, 15),
+    ("Sostituzione schermo smartphone", "Schermo", "Smartphone", 80),
+    ("Sostituzione batteria smartphone", "Batteria", "Smartphone", 45),
+    ("Sostituzione connettore di ricarica", "Connettori", "Smartphone", 50),
+    ("Sostituzione vetro posteriore", "Schermo", "Smartphone", 60),
+    ("Sostituzione fotocamera", "Fotocamera", "Smartphone", 55),
+    ("Recupero dati / backup", "Software", None, 40),
+    ("Formattazione e reinstallazione sistema", "Software", "PC / Notebook", 45),
+    ("Rimozione virus / pulizia software", "Software", "PC / Notebook", 35),
+    ("Sostituzione SSD + clonazione", "Hardware", "PC / Notebook", 50),
+    ("Upgrade RAM", "Hardware", "PC / Notebook", 25),
+    ("Pulizia interna e cambio pasta termica", "Manutenzione", "PC / Notebook", 40),
+    ("Sostituzione tastiera notebook", "Hardware", "PC / Notebook", 50),
+    ("Sostituzione schermo notebook", "Schermo", "PC / Notebook", 90),
+    ("Sostituzione porta HDMI console", "Connettori", "Console", 70),
+    ("Pulizia e cambio pasta termica console", "Manutenzione", "Console", 50),
+    ("Sostituzione stick analogici joypad", "Hardware", "Console", 30),
+    ("Sostituzione batteria tablet", "Batteria", "Tablet", 60),
+    ("Sostituzione schermo tablet", "Schermo", "Tablet", 100),
+]
 
 
 class ModelIn(BaseModel):
@@ -1104,6 +1169,31 @@ async def sell_refurbished(ref_id: str, body: RefurbSellIn, user: dict = Depends
     return await enrich_refurb(await db.refurbished.find_one({"id": ref_id}))
 
 
+@api.post("/refurbished/{ref_id}/open-repair")
+async def open_repair_from_refurb(ref_id: str, body: OpenRepairIn, user: dict = Depends(get_current_user)):
+    d = await db.refurbished.find_one({"id": ref_id})
+    if not d:
+        raise HTTPException(404, "Dispositivo non trovato")
+    if d.get("repair_id") and await db.repairs.find_one({"id": d["repair_id"], "status": {"$nin": ["consegnata", "annullata"]}}):
+        raise HTTPException(400, "Esiste già una riparazione aperta per questo dispositivo")
+    seq = await next_sequence("repair")
+    repair = Repair(
+        ticket_number=f"RIP-{seq:05d}",
+        customer_name=f"Laboratorio · {d['code']}",
+        device_type=d["device_type"],
+        device_brand=d.get("brand"),
+        device_model=d.get("model"),
+        serial_or_imei=d.get("serial_or_imei"),
+        problem=body.problem or f"Ricondizionamento {d['code']}",
+        status="in_lavorazione",
+    )
+    repair.received_at = repair.created_at
+    await db.repairs.insert_one(repair.model_dump())
+    new_status = "in_ricondizionamento" if d["status"] in ("acquistato", "pronto") else d["status"]
+    await db.refurbished.update_one({"id": ref_id}, {"$set": {"repair_id": repair.id, "status": new_status, "updated_at": now_iso()}})
+    return {"repair": repair, "refurbished": await enrich_refurb(await db.refurbished.find_one({"id": ref_id}))}
+
+
 @api.delete("/refurbished/{ref_id}")
 async def delete_refurbished(ref_id: str, user: dict = Depends(get_current_user)):
     existing = await db.refurbished.find_one({"id": ref_id})
@@ -1168,6 +1258,62 @@ async def create_model(body: ModelIn, user: dict = Depends(get_current_user)):
 @api.delete("/catalog/models/{model_id}")
 async def delete_model(model_id: str, user: dict = Depends(get_current_user)):
     await db.device_models.delete_one({"id": model_id})
+    return {"ok": True}
+
+
+@api.post("/catalog/models/{model_id}/colors")
+async def add_model_color(model_id: str, body: ColorIn, user: dict = Depends(get_current_user)):
+    color = body.color.strip()
+    if not color:
+        raise HTTPException(400, "Colore obbligatorio")
+    res = await db.device_models.update_one({"id": model_id}, {"$addToSet": {"colors": color}})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Modello non trovato")
+    return clean(await db.device_models.find_one({"id": model_id}))
+
+
+@api.get("/catalog/colors")
+async def list_colors(user: dict = Depends(get_current_user), brand: Optional[str] = None, model: Optional[str] = None):
+    colors: List[str] = []
+    m = await db.device_models.find_one({"brand": brand, "name": model}) if brand and model else None
+    if m:
+        colors += m.get("colors") or []
+    for c in BRAND_COLORS.get(brand or "", []) + DEFAULT_COLORS:
+        if c not in colors:
+            colors.append(c)
+    return {"colors": colors, "model_id": m["id"] if m else None}
+
+
+# ---------- Services price list ----------
+@api.get("/services")
+async def list_services(user: dict = Depends(get_current_user), q: Optional[str] = None, device_type: Optional[str] = None):
+    query = {}
+    if q:
+        query["$or"] = [{"name": {"$regex": q, "$options": "i"}}, {"category": {"$regex": q, "$options": "i"}}]
+    if device_type:
+        query["$or"] = [{"device_type": device_type}, {"device_type": None}]
+    items = await db.services.find(query).sort([("category", 1), ("name", 1)]).to_list(1000)
+    return [clean(i) for i in items]
+
+
+@api.post("/services")
+async def create_service(body: ServiceIn, user: dict = Depends(get_current_user)):
+    obj = Service(**body.model_dump())
+    await db.services.insert_one(obj.model_dump())
+    return obj
+
+
+@api.put("/services/{service_id}")
+async def update_service(service_id: str, body: ServiceIn, user: dict = Depends(get_current_user)):
+    res = await db.services.update_one({"id": service_id}, {"$set": body.model_dump(exclude_unset=True)})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Intervento non trovato")
+    return clean(await db.services.find_one({"id": service_id}))
+
+
+@api.delete("/services/{service_id}")
+async def delete_service(service_id: str, user: dict = Depends(get_current_user)):
+    await db.services.delete_one({"id": service_id})
     return {"ok": True}
 
 
@@ -1292,6 +1438,12 @@ async def startup():
         await db.device_brands.insert_many(brands)
         await db.device_models.insert_many(models)
         logger.info(f"Catalogo dispositivi inizializzato: {len(brands)} marche, {len(models)} modelli")
+
+    if await db.services.count_documents({}) == 0:
+        await db.services.insert_many([
+            Service(name=n, category=c, device_type=t, price=p).model_dump() for n, c, t, p in SERVICE_SEED
+        ])
+        logger.info("Listino interventi inizializzato")
 
     admin_email = os.environ["ADMIN_EMAIL"].lower()
     admin_password = os.environ["ADMIN_PASSWORD"]

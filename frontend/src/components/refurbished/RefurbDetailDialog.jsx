@@ -29,6 +29,7 @@ import {
     Trash2,
     Link2,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 function Timeline({ item }) {
     const events = [
@@ -76,6 +77,7 @@ export function RefurbDetailDialog({ item, onOpenChange, onChanged }) {
     const [customers, setCustomers] = useState([]);
     const [repairs, setRepairs] = useState([]);
     const [showSell, setShowSell] = useState(false);
+    const navigate = useNavigate();
 
     useEffect(() => {
         if (!item) return;
@@ -181,7 +183,26 @@ export function RefurbDetailDialog({ item, onOpenChange, onChanged }) {
                 {item.status !== "venduto" && (
                     <>
                         <div className="border-t border-border pt-4 space-y-3">
-                            <div className="eyebrow">Collega ticket riparazione</div>
+                            <div className="flex items-center justify-between gap-2">
+                                <div className="eyebrow">Riparazione del dispositivo</div>
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    data-testid="open-repair-from-refurb"
+                                    onClick={async () => {
+                                        try {
+                                            const { data } = await api.post(`/refurbished/${item.id}/open-repair`, {});
+                                            toast.success(`Ticket ${data.repair.ticket_number} aperto`);
+                                            onChanged();
+                                            navigate("/riparazioni");
+                                        } catch (e) {
+                                            toast.error(formatApiError(e));
+                                        }
+                                    }}
+                                >
+                                    <Wrench className="h-3.5 w-3.5 mr-1" /> Apri riparazione per {item.code}
+                                </Button>
+                            </div>
                             <div className="flex gap-2">
                                 <Select
                                     value={item.repair_id || "none"}

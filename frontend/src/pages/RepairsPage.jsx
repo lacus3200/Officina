@@ -40,6 +40,7 @@ import { printRepairReceipt } from "@/lib/pdf";
 import { CustomerSelect } from "@/components/CustomerSelect";
 import { DeviceBrandModelFields } from "@/components/DeviceBrandModelFields";
 import { SerialHistoryAlert } from "@/components/SerialHistoryAlert";
+import { RepairServicesField } from "@/components/RepairServicesField";
 
 const toDateInput = (iso) => (iso ? iso.slice(0, 10) : "");
 const fromDateInput = (d, fallback) => (d ? new Date(`${d}T12:00:00`).toISOString() : fallback || null);
@@ -59,6 +60,7 @@ const EMPTY = {
     final_price: 0,
     paid: false,
     parts_used: [],
+    services: [],
     technical_notes: "",
     received_at: "",
     delivered_at: "",
@@ -337,6 +339,14 @@ export default function RepairsPage() {
                                     }
                                 />
                             </div>
+
+                            <RepairServicesField
+                                services={form.services || []}
+                                deviceType={form.device_type}
+                                partsTotal={form.parts_used.reduce((t, p) => t + Number(p.quantity || 0) * Number(p.unit_price || 0), 0)}
+                                onChange={(services) => setForm({ ...form, services })}
+                                onUseAsEstimate={(v) => setForm({ ...form, estimate: v, final_price: Number(form.final_price) > 0 ? form.final_price : v })}
+                            />
 
                             {/* Parts */}
                             <div className="col-span-2 pt-2">

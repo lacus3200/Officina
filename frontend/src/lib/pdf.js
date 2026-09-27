@@ -50,6 +50,19 @@ export function printRepairReceipt(repair) {
         y += 6 + (lines.length - 1) * 5;
     });
 
+    if (repair.services?.length) {
+        y += 4;
+        doc.setFont("helvetica", "bold");
+        doc.text("Interventi", 14, y);
+        y += 5;
+        doc.setFont("helvetica", "normal");
+        repair.services.forEach((s) => {
+            doc.text(`• ${s.name}`, 18, y);
+            doc.text(currency(s.price), 180, y, { align: "right" });
+            y += 6;
+        });
+    }
+
     if (repair.parts_used?.length) {
         y += 4;
         doc.setFont("helvetica", "bold");

@@ -12,6 +12,7 @@ import CashPage from "@/pages/CashPage";
 import ReportsPage from "@/pages/ReportsPage";
 import RefurbishedPage from "@/pages/RefurbishedPage";
 import SuppliersPage from "@/pages/SuppliersPage";
+import ServicesPage from "@/pages/ServicesPage";
 import Layout from "@/components/Layout";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -114,6 +115,14 @@ function AppRoutes() {
                 element={
                     <Protected>
                         <SuppliersPage />
+                    </Protected>
+                }
+            />
+            <Route
+                path="/listino"
+                element={
+                    <Protected>
+                        <ServicesPage />
                     </Protected>
                 }
             />

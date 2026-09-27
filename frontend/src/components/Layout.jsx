@@ -13,6 +13,7 @@ import {
     Menu,
     RefreshCw,
     Truck,
+    ListChecks,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -21,6 +22,7 @@ import { cn } from "@/lib/utils";
 const NAV = [
     { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true, testId: "nav-dashboard" },
     { to: "/riparazioni", label: "Riparazioni", icon: Wrench, testId: "nav-repairs" },
+    { to: "/listino", label: "Listino interventi", icon: ListChecks, testId: "nav-services" },
     { to: "/clienti", label: "Clienti", icon: Users, testId: "nav-customers" },
     { to: "/magazzino", label: "Magazzino", icon: Package, testId: "nav-inventory" },
     { to: "/vendite", label: "Vendite", icon: ShoppingCart, testId: "nav-sales" },

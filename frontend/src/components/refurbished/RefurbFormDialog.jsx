@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { DEVICE_TYPES, REFURB_STATUS } from "@/lib/format";
 import { DeviceBrandModelFields } from "@/components/DeviceBrandModelFields";
 import { SerialHistoryAlert } from "@/components/SerialHistoryAlert";
+import { ColorSelect } from "@/components/ColorSelect";
 
 const EMPTY = {
     device_type: "Smartphone",
@@ -136,7 +137,7 @@ export function RefurbFormDialog({ open, onOpenChange, editing, onSaved }) {
                     <div className="grid grid-cols-3 gap-3">
                         <div className="col-span-2">
                             <Label className="eyebrow">Colore</Label>
-                            <Input value={form.color} onChange={set("color")} placeholder="Es. Nero siderale" data-testid="refurb-color-input" />
+                            <ColorSelect brand={form.brand} model={form.model} value={form.color} onChange={(c) => setForm({ ...form, color: c })} />
                         </div>
                         <div>
                             <Label className="eyebrow">Grado estetico</Label>
