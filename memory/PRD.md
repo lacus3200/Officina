@@ -95,6 +95,13 @@
   reset), scroll interno con header sticky e scrollbar orizzontale sempre visibile
 - ✅ Backup: pagina /impostazioni con export JSON completo e import (sostituisci/unisci) con anteprima
 - ✅ Test iteration_7: backend 11/11, frontend E2E OK.
+- ✅ Tabelle ridimensionabili + scroll interno anche su Clienti (convertita da card a tabella),
+  Vendite e Cassa
+- ✅ Sync cassa: GET /cash esegue sync automatico, POST /cash/sync manuale (pulsante);
+  vendite/riparazioni pagate senza movimento vengono aggiunte, importi corretti, orfani rimossi;
+  movimenti collegati a vendita/riparazione non eliminabili (400)
+- ✅ Ricambi → uscite cassa "acquisto_ricambi" (creazione, aumento quantità, backfill via sync);
+  dettaglio movimento tipo "part". Test iteration_8 OK.
 
 ## Backlog (P1/P2)
 - P1 Filtri per data su report (settimana/mese/trimestre/anno)

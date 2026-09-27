@@ -1,0 +1,24 @@
+{
+  "summary": "Iteration 8 testing: resizable tables (Clienti/Vendite/Cassa), cash-sync endpoint, cash<->sales/repairs/parts synchronization, blocked delete for linked cash movements, and part purchase movements + cash reference dialog. All backend (4/4 pytest) and frontend flows pass end-to-end.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter8_cash_sync_parts.py",
+    "/app/test_reports/pytest/iter8.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is >1600 lines; consider splitting by domain (customers, parts, sales, cash, refurb, catalog, backup) into routers to improve maintainability.",
+    "GET /api/cash executes sync_cash() on every request, which iterates over sales/repairs/parts collections. On larger data this may become slow; consider incremental sync or debouncing.",
+    "sync_cash() only removes orphan 'vendita' movements; orphan 'riparazione' or 'acquisto_ricambi' movements (e.g. if a part is deleted directly) are not cleaned. delete_part does not remove related cash_movements - stale rows can accumulate.",
+    "record_part_purchase is called on PUT when quantity increases even if cost_price is 0 (guarded amount<=0). OK, but tying purchase cost to current cost_price rather than the delta's cost at that time may misprice if cost changes between purchases."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@lab.local / admin123",
+  "seed_data_creation": "Tests create TEST_-prefixed entities and clean them up.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Login redirects to '/', not '/dashboard'; wait for 'Panoramica' text or a route selector. All resizable table testids follow pattern {section}-th-{i} and {section}-th-{i}-resizer; scroll container {section}-table-scroll; reset button reset-columns-{section}. Column widths persist via localStorage key colw:{section}. Cash sync toast text: 'Cassa già sincronizzata' when idempotent. delete_part does NOT cascade cash movements - potential minor issue.",
+  "rca of the issue": "N/A - no issues found."
+}
