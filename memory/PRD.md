@@ -79,6 +79,8 @@
 - ✅ "Apri riparazione" dalla scheda ricondizionato: crea ticket precompilato collegato,
   stato → in_ricondizionamento, blocco se già aperto
 - ✅ Test iteration_5: backend 9/9, frontend E2E OK.
+- ✅ Vendita ricondizionato chiude automaticamente (consegnata + data uscita + nota) la
+  riparazione collegata ancora aperta; nessun doppio incasso in cassa.
 
 ## Backlog (P1/P2)
 - P1 Filtri per data su report (settimana/mese/trimestre/anno)

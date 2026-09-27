@@ -1166,6 +1166,15 @@ async def sell_refurbished(ref_id: str, body: RefurbSellIn, user: dict = Depends
         {"$set": {"status": "venduto", "sale_id": sale.id, "sale_price": body.sale_price,
                   "sold_at": now_iso(), "updated_at": now_iso()}},
     )
+    if existing.get("repair_id"):
+        rep = await db.repairs.find_one({"id": existing["repair_id"], "status": {"$nin": ["consegnata", "annullata"]}})
+        if rep:
+            note = f"Chiusa automaticamente: dispositivo {existing['code']} venduto con {sale.invoice_number}"
+            notes = f"{rep['technical_notes']}\n{note}" if rep.get("technical_notes") else note
+            await db.repairs.update_one(
+                {"id": rep["id"]},
+                {"$set": {"status": "consegnata", "delivered_at": now_iso(), "updated_at": now_iso(), "technical_notes": notes}},
+            )
     return await enrich_refurb(await db.refurbished.find_one({"id": ref_id}))
 
 
