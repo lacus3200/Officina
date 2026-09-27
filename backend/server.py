@@ -204,6 +204,25 @@ class RepairIn(BaseModel):
     technical_notes: Optional[str] = None
 
 
+class RepairUpdate(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    customer_id: Optional[str] = None
+    customer_name: Optional[str] = None
+    device_type: Optional[str] = None
+    device_brand: Optional[str] = None
+    device_model: Optional[str] = None
+    serial_or_imei: Optional[str] = None
+    problem: Optional[str] = None
+    diagnosis: Optional[str] = None
+    status: Optional[RepairStatus] = None
+    estimate: Optional[float] = None
+    parts_used: Optional[List[RepairPartUsed]] = None
+    labor_cost: Optional[float] = None
+    final_price: Optional[float] = None
+    paid: Optional[bool] = None
+    technical_notes: Optional[str] = None
+
+
 class SaleItem(BaseModel):
     part_id: Optional[str] = None
     description: str
@@ -340,7 +359,7 @@ async def get_customer(customer_id: str, user: dict = Depends(get_current_user))
 
 @api.put("/customers/{customer_id}")
 async def update_customer(customer_id: str, body: CustomerIn, user: dict = Depends(get_current_user)):
-    res = await db.customers.update_one({"id": customer_id}, {"$set": body.model_dump()})
+    res = await db.customers.update_one({"id": customer_id}, {"$set": body.model_dump(exclude_unset=True)})
     if res.matched_count == 0:
         raise HTTPException(404, "Cliente non trovato")
     return clean(await db.customers.find_one({"id": customer_id}))
@@ -387,7 +406,7 @@ async def get_part(part_id: str, user: dict = Depends(get_current_user)):
 
 @api.put("/parts/{part_id}")
 async def update_part(part_id: str, body: PartIn, user: dict = Depends(get_current_user)):
-    data = body.model_dump()
+    data = body.model_dump(exclude_unset=True)
     data["updated_at"] = now_iso()
     res = await db.parts.update_one({"id": part_id}, {"$set": data})
     if res.matched_count == 0:
@@ -437,16 +456,15 @@ async def get_repair(repair_id: str, user: dict = Depends(get_current_user)):
 
 
 @api.put("/repairs/{repair_id}")
-async def update_repair(repair_id: str, body: RepairIn, user: dict = Depends(get_current_user)):
-    data = body.model_dump()
+async def update_repair(repair_id: str, body: RepairUpdate, user: dict = Depends(get_current_user)):
+    data = body.model_dump(exclude_unset=True)
     data["updated_at"] = now_iso()
-    if body.status == "consegnata":
-        existing = await db.repairs.find_one({"id": repair_id})
-        if existing and not existing.get("delivered_at"):
-            data["delivered_at"] = now_iso()
-    res = await db.repairs.update_one({"id": repair_id}, {"$set": data})
-    if res.matched_count == 0:
+    existing = await db.repairs.find_one({"id": repair_id})
+    if not existing:
         raise HTTPException(404, "Riparazione non trovata")
+    if data.get("status") == "consegnata" and not existing.get("delivered_at"):
+        data["delivered_at"] = now_iso()
+    await db.repairs.update_one({"id": repair_id}, {"$set": data})
     updated = clean(await db.repairs.find_one({"id": repair_id}))
 
     # Se consegnata e pagata registra la cassa (se non già presente)
