@@ -24,6 +24,10 @@ import { toast } from "sonner";
 import { currency, formatDateTime } from "@/lib/format";
 import { printSaleInvoice } from "@/lib/pdf";
 import { CustomerSelect } from "@/components/CustomerSelect";
+import { useColumnWidths, ResizableTh, ScrollTable } from "@/components/ResizableTable";
+
+const COLS = ["Fattura", "Cliente", "Articoli", "Pagamento", "Totale", "Margine", "Data", "Azioni"];
+const COL_DEFAULTS = [120, 180, 300, 120, 110, 110, 130, 110];
 
 const EMPTY_ITEM = { part_id: "", description: "", quantity: 1, unit_price: 0 };
 
@@ -32,6 +36,7 @@ export default function SalesPage() {
     const [parts, setParts] = useState([]);
     const [customers, setCustomers] = useState([]);
     const [open, setOpen] = useState(false);
+    const [widths, setWidths, resetWidths] = useColumnWidths("sales", COL_DEFAULTS);
     const [form, setForm] = useState({
         customer_id: "",
         customer_name: "",
@@ -304,19 +309,21 @@ export default function SalesPage() {
                 </Dialog>
             </div>
 
+            <div className="flex justify-end">
+                <button className="text-xs text-muted-foreground hover:text-primary" onClick={resetWidths} data-testid="reset-columns-sales">
+                    Ripristina larghezza colonne
+                </button>
+            </div>
             <Card>
-                <CardContent className="p-0 overflow-x-auto">
-                    <table className="w-full text-sm">
+                <CardContent className="p-0">
+                    <ScrollTable widths={widths} testId="sales-table-scroll">
                         <thead>
                             <tr className="text-left text-muted-foreground border-b border-border">
-                                <th className="px-4 py-3 font-medium">Fattura</th>
-                                <th className="px-4 py-3 font-medium">Cliente</th>
-                                <th className="px-4 py-3 font-medium">Articoli</th>
-                                <th className="px-4 py-3 font-medium">Pagamento</th>
-                                <th className="px-4 py-3 font-medium text-right">Totale</th>
-                                <th className="px-4 py-3 font-medium text-right">Margine</th>
-                                <th className="px-4 py-3 font-medium">Data</th>
-                                <th className="px-4 py-3 font-medium text-right">Azioni</th>
+                                {COLS.map((c, i) => (
+                                    <ResizableTh key={c} index={i} widths={widths} setWidths={setWidths} testId={`sales-th-${i}`} className={[4, 5, 7].includes(i) ? "text-right" : ""}>
+                                        {c}
+                                    </ResizableTh>
+                                ))}
                             </tr>
                         </thead>
                         <tbody>
@@ -378,7 +385,7 @@ export default function SalesPage() {
                                 </tr>
                             ))}
                         </tbody>
-                    </table>
+                    </ScrollTable>
                 </CardContent>
             </Card>
         </div>

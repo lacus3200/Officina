@@ -18,7 +18,11 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, ArrowUpRight, ArrowDownRight, Link2 } from "lucide-react";
+import { Plus, Trash2, ArrowUpRight, ArrowDownRight, Link2, RefreshCw } from "lucide-react";
+import { useColumnWidths, ResizableTh, ScrollTable } from "@/components/ResizableTable";
+
+const COLS = ["Data", "Tipo", "Categoria", "Descrizione", "Importo", ""];
+const COL_DEFAULTS = [160, 100, 150, 420, 130, 70];
 import { CashReferenceDialog } from "@/components/CashReferenceDialog";
 import { toast } from "sonner";
 import { currency, formatDateTime } from "@/lib/format";
@@ -27,6 +31,22 @@ export default function CashPage() {
     const [items, setItems] = useState([]);
     const [open, setOpen] = useState(false);
     const [detail, setDetail] = useState(null);
+    const [widths, setWidths, resetWidths] = useColumnWidths("cash", COL_DEFAULTS);
+    const [syncing, setSyncing] = useState(false);
+
+    const syncNow = async () => {
+        setSyncing(true);
+        try {
+            const { data } = await api.post("/cash/sync");
+            const n = data.sales_added + data.sales_fixed + data.orphans_removed + data.repairs_added + data.parts_added;
+            toast.success(n ? `Sincronizzato: ${data.sales_added} vendite, ${data.repairs_added} riparazioni, ${data.parts_added} ricambi aggiunti, ${data.sales_fixed} corretti, ${data.orphans_removed} rimossi` : "Cassa già sincronizzata");
+            load();
+        } catch (e) {
+            toast.error(formatApiError(e));
+        } finally {
+            setSyncing(false);
+        }
+    };
     const [form, setForm] = useState({
         type: "entrata",
         category: "altro",
@@ -210,17 +230,24 @@ export default function CashPage() {
                 </Card>
             </div>
 
+            <div className="flex justify-between items-center">
+                <Button variant="outline" size="sm" onClick={syncNow} disabled={syncing} data-testid="cash-sync-button">
+                    <RefreshCw className={`h-4 w-4 mr-2 ${syncing ? "animate-spin" : ""}`} /> Sincronizza con vendite, riparazioni e magazzino
+                </Button>
+                <button className="text-xs text-muted-foreground hover:text-primary" onClick={resetWidths} data-testid="reset-columns-cash">
+                    Ripristina larghezza colonne
+                </button>
+            </div>
             <Card>
-                <CardContent className="p-0 overflow-x-auto">
-                    <table className="w-full text-sm">
+                <CardContent className="p-0">
+                    <ScrollTable widths={widths} testId="cash-table-scroll">
                         <thead>
                             <tr className="text-left text-muted-foreground border-b border-border">
-                                <th className="px-4 py-3 font-medium">Data</th>
-                                <th className="px-4 py-3 font-medium">Tipo</th>
-                                <th className="px-4 py-3 font-medium">Categoria</th>
-                                <th className="px-4 py-3 font-medium">Descrizione</th>
-                                <th className="px-4 py-3 font-medium text-right">Importo</th>
-                                <th className="px-4 py-3 font-medium"></th>
+                                {COLS.map((c, i) => (
+                                    <ResizableTh key={i} index={i} widths={widths} setWidths={setWidths} testId={`cash-th-${i}`} className={i === 4 ? "text-right" : ""}>
+                                        {c}
+                                    </ResizableTh>
+                                ))}
                             </tr>
                         </thead>
                         <tbody>
@@ -255,8 +282,8 @@ export default function CashPage() {
                                     <td className="px-4 py-3 capitalize text-muted-foreground">
                                         {m.category.replace("_", " ")}
                                     </td>
-                                    <td className="px-4 py-3">
-                                        <span className="inline-flex items-center gap-1.5">
+                                    <td className="px-4 py-3 truncate" title={m.description}>
+                                        <span className="inline-flex items-center gap-1.5 max-w-full">
                                             {m.reference_id && <Link2 className="h-3 w-3 text-primary shrink-0" />}
                                             {m.description || "—"}
                                         </span>
@@ -281,7 +308,7 @@ export default function CashPage() {
                                 </tr>
                             ))}
                         </tbody>
-                    </table>
+                    </ScrollTable>
                 </CardContent>
             </Card>
             <CashReferenceDialog movement={detail} onOpenChange={(v) => !v && setDetail(null)} />

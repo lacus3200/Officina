@@ -26,6 +26,10 @@ import {
 import { Plus, Search, Pencil, Trash2, Phone, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { formatDate } from "@/lib/format";
+import { useColumnWidths, ResizableTh, ScrollTable } from "@/components/ResizableTable";
+
+const COLS = ["Cliente", "Telefono", "Email", "Indirizzo", "Note", "Dal", "Azioni"];
+const COL_DEFAULTS = [220, 140, 220, 220, 260, 110, 110];
 
 const EMPTY = { name: "", phone: "", email: "", address: "", notes: "" };
 
@@ -35,6 +39,7 @@ export default function CustomersPage() {
     const [open, setOpen] = useState(false);
     const [form, setForm] = useState(EMPTY);
     const [editingId, setEditingId] = useState(null);
+    const [widths, setWidths, resetWidths] = useColumnWidths("customers", COL_DEFAULTS);
 
     const load = async () => {
         try {
@@ -194,93 +199,71 @@ export default function CustomersPage() {
                 />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {items.length === 0 && (
-                    <Card className="col-span-full">
-                        <CardContent className="p-10 text-center text-muted-foreground">
-                            Nessun cliente registrato.
-                        </CardContent>
-                    </Card>
-                )}
-                {items.map((c) => (
-                    <Card key={c.id} className="hover:border-primary/40 transition-colors">
-                        <CardContent className="p-5">
-                            <div className="flex justify-between items-start gap-2">
-                                <div className="min-w-0">
-                                    <div
-                                        className="font-display font-semibold text-lg truncate"
-                                        data-testid={`customer-name-${c.id}`}
-                                    >
-                                        {c.name}
-                                    </div>
-                                    <div className="text-xs text-muted-foreground mt-1">
-                                        Cliente dal {formatDate(c.created_at)}
-                                    </div>
-                                </div>
-                                <div className="flex gap-1">
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        data-testid={`edit-customer-${c.id}`}
-                                        onClick={() => edit(c)}
-                                    >
-                                        <Pencil className="h-4 w-4" />
-                                    </Button>
-                                    <AlertDialog>
-                                        <AlertDialogTrigger asChild>
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                data-testid={`delete-customer-${c.id}`}
-                                                className="text-red-400 hover:text-red-300"
-                                            >
-                                                <Trash2 className="h-4 w-4" />
-                                            </Button>
-                                        </AlertDialogTrigger>
-                                        <AlertDialogContent className="bg-card border-border">
-                                            <AlertDialogHeader>
-                                                <AlertDialogTitle>
-                                                    Eliminare {c.name}?
-                                                </AlertDialogTitle>
-                                                <AlertDialogDescription>
-                                                    L'operazione non può essere annullata.
-                                                </AlertDialogDescription>
-                                            </AlertDialogHeader>
-                                            <AlertDialogFooter>
-                                                <AlertDialogCancel>Annulla</AlertDialogCancel>
-                                                <AlertDialogAction
-                                                    onClick={() => remove(c.id)}
-                                                >
-                                                    Elimina
-                                                </AlertDialogAction>
-                                            </AlertDialogFooter>
-                                        </AlertDialogContent>
-                                    </AlertDialog>
-                                </div>
-                            </div>
-                            <div className="mt-4 space-y-1.5 text-sm text-zinc-300">
-                                {c.phone && (
-                                    <div className="flex items-center gap-2">
-                                        <Phone className="h-3.5 w-3.5 text-muted-foreground" />
-                                        <span>{c.phone}</span>
-                                    </div>
-                                )}
-                                {c.email && (
-                                    <div className="flex items-center gap-2">
-                                        <Mail className="h-3.5 w-3.5 text-muted-foreground" />
-                                        <span className="truncate">{c.email}</span>
-                                    </div>
-                                )}
-                                {c.notes && (
-                                    <div className="text-xs text-muted-foreground pt-2 border-t border-border mt-2">
-                                        {c.notes}
-                                    </div>
-                                )}
-                            </div>
-                        </CardContent>
-                    </Card>
-                ))}
+            <div className="flex justify-end">
+                <button className="text-xs text-muted-foreground hover:text-primary" onClick={resetWidths} data-testid="reset-columns-customers">
+                    Ripristina larghezza colonne
+                </button>
             </div>
+            <Card>
+                <CardContent className="p-0">
+                    <ScrollTable widths={widths} testId="customers-table-scroll">
+                        <thead>
+                            <tr className="text-left text-muted-foreground border-b border-border">
+                                {COLS.map((c, i) => (
+                                    <ResizableTh key={c} index={i} widths={widths} setWidths={setWidths} testId={`customers-th-${i}`} className={i === 6 ? "text-right" : ""}>
+                                        {c}
+                                    </ResizableTh>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {items.length === 0 && (
+                                <tr>
+                                    <td colSpan={7} className="text-center py-14 text-muted-foreground">Nessun cliente registrato.</td>
+                                </tr>
+                            )}
+                            {items.map((c, idx) => (
+                                <tr key={c.id} className={`border-b border-border/50 hover:bg-white/5 ${idx % 2 ? "bg-white/[0.02]" : ""}`}>
+                                    <td className="px-4 py-3 font-medium truncate" data-testid={`customer-name-${c.id}`} title={c.name}>{c.name}</td>
+                                    <td className="px-4 py-3 truncate">
+                                        {c.phone ? <span className="inline-flex items-center gap-1.5"><Phone className="h-3.5 w-3.5 text-muted-foreground" />{c.phone}</span> : "—"}
+                                    </td>
+                                    <td className="px-4 py-3 truncate" title={c.email}>
+                                        {c.email ? <span className="inline-flex items-center gap-1.5"><Mail className="h-3.5 w-3.5 text-muted-foreground" />{c.email}</span> : "—"}
+                                    </td>
+                                    <td className="px-4 py-3 truncate text-muted-foreground" title={c.address}>{c.address || "—"}</td>
+                                    <td className="px-4 py-3 truncate text-xs text-muted-foreground" title={c.notes}>{c.notes || "—"}</td>
+                                    <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">{formatDate(c.created_at)}</td>
+                                    <td className="px-4 py-3">
+                                        <div className="flex gap-1 justify-end">
+                                            <Button variant="ghost" size="icon" data-testid={`edit-customer-${c.id}`} onClick={() => edit(c)}>
+                                                <Pencil className="h-4 w-4" />
+                                            </Button>
+                                            <AlertDialog>
+                                                <AlertDialogTrigger asChild>
+                                                    <Button variant="ghost" size="icon" data-testid={`delete-customer-${c.id}`} className="text-red-400 hover:text-red-300">
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </AlertDialogTrigger>
+                                                <AlertDialogContent className="bg-card border-border">
+                                                    <AlertDialogHeader>
+                                                        <AlertDialogTitle>Eliminare {c.name}?</AlertDialogTitle>
+                                                        <AlertDialogDescription>L'operazione non può essere annullata.</AlertDialogDescription>
+                                                    </AlertDialogHeader>
+                                                    <AlertDialogFooter>
+                                                        <AlertDialogCancel>Annulla</AlertDialogCancel>
+                                                        <AlertDialogAction onClick={() => remove(c.id)}>Elimina</AlertDialogAction>
+                                                    </AlertDialogFooter>
+                                                </AlertDialogContent>
+                                            </AlertDialog>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </ScrollTable>
+                </CardContent>
+            </Card>
         </div>
     );
 }

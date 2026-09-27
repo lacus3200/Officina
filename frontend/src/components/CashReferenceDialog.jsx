@@ -13,6 +13,7 @@ const META = {
     sale: { title: "Vendita", route: "/vendite", code: (d) => d.invoice_number },
     order: { title: "Ordine fornitore", route: "/fornitori", code: (d) => d.order_number },
     refurbished: { title: "Dispositivo ricondizionato", route: "/ricondizionati", code: (d) => d.code },
+    part: { title: "Ricambio in magazzino", route: "/magazzino", code: (d) => d.sku || d.name },
 };
 
 function Row({ label, value }) {
@@ -54,6 +55,17 @@ function Body({ type, data }) {
                 <Row label="Fornitore" value={data.supplier_name} />
                 {data.items.map((it, i) => <Row key={i} label={`${it.description} · ${it.received_qty || 0}/${it.quantity}`} value={currency(it.unit_cost * it.quantity)} />)}
                 <Row label="Totale ordine" value={<b>{currency(data.total)}</b>} />
+            </>
+        );
+    if (type === "part")
+        return (
+            <>
+                <Row label="Ricambio" value={`${data.name}${data.brand ? ` (${data.brand})` : ""}`} />
+                <Row label="Categoria" value={data.category} />
+                <Row label="Giacenza attuale" value={`${data.quantity} pz`} />
+                <Row label="Costo unitario" value={currency(data.cost_price)} />
+                <Row label="Prezzo vendita" value={currency(data.sell_price)} />
+                <Row label="Compatibile con" value={data.compatible_models?.join(", ") || "—"} />
             </>
         );
     return (

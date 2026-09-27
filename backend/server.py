@@ -745,7 +745,23 @@ async def create_part(body: PartIn, user: dict = Depends(get_current_user)):
     if not obj.category:
         obj.category = guess_part_category(obj.name)
     await db.parts.insert_one(obj.model_dump())
+    await record_part_purchase(obj.model_dump(), obj.quantity)
     return obj
+
+
+async def record_part_purchase(part: dict, qty: int):
+    amount = round(qty * float(part.get("cost_price") or 0), 2)
+    if qty <= 0 or amount <= 0:
+        return
+    mov = CashMovement(
+        type="uscita",
+        category="acquisto_ricambi",
+        amount=amount,
+        description=f"Ricambio {part['name']} ×{qty}" + (f" ({part['brand']})" if part.get("brand") else ""),
+        reference_id=part["id"],
+        date=part.get("entered_at") or now_iso(),
+    )
+    await db.cash_movements.insert_one(mov.model_dump())
 
 
 @api.get("/parts/{part_id}")
@@ -758,12 +774,17 @@ async def get_part(part_id: str, user: dict = Depends(get_current_user)):
 
 @api.put("/parts/{part_id}")
 async def update_part(part_id: str, body: PartIn, user: dict = Depends(get_current_user)):
+    existing = await db.parts.find_one({"id": part_id})
+    if not existing:
+        raise HTTPException(404, "Pezzo non trovato")
     data = body.model_dump(exclude_unset=True)
     data["updated_at"] = now_iso()
-    res = await db.parts.update_one({"id": part_id}, {"$set": data})
-    if res.matched_count == 0:
-        raise HTTPException(404, "Pezzo non trovato")
-    return clean(await db.parts.find_one({"id": part_id}))
+    await db.parts.update_one({"id": part_id}, {"$set": data})
+    updated = await db.parts.find_one({"id": part_id})
+    delta = int(updated.get("quantity", 0)) - int(existing.get("quantity", 0))
+    if delta > 0:
+        await record_part_purchase({**updated, "entered_at": None}, delta)
+    return clean(updated)
 
 
 @api.delete("/parts/{part_id}")
@@ -904,6 +925,7 @@ async def list_cash(user: dict = Depends(get_current_user), start: Optional[str]
             query["date"]["$gte"] = start
         if end:
             query["date"]["$lte"] = end
+    await sync_cash()
     items = await db.cash_movements.find(query).sort("date", -1).to_list(5000)
     return [clean(i) for i in items]
 
@@ -920,8 +942,55 @@ async def create_cash(body: CashMovementIn, user: dict = Depends(get_current_use
 
 @api.delete("/cash/{mov_id}")
 async def delete_cash(mov_id: str, user: dict = Depends(get_current_user)):
+    m = await db.cash_movements.find_one({"id": mov_id})
+    if m and m.get("reference_id"):
+        if m.get("category") == "vendita" and await db.sales.find_one({"id": m["reference_id"]}):
+            raise HTTPException(400, "Movimento collegato a una vendita: elimina la vendita per rimuovere l'incasso")
+        if m.get("category") == "riparazione" and await db.repairs.find_one({"id": m["reference_id"]}):
+            raise HTTPException(400, "Movimento collegato a una riparazione pagata: modifica la riparazione")
     await db.cash_movements.delete_one({"id": mov_id})
     return {"ok": True}
+
+
+async def sync_cash() -> dict:
+    stats = {"sales_added": 0, "sales_fixed": 0, "orphans_removed": 0, "repairs_added": 0, "parts_added": 0}
+    sale_ids = set()
+    async for sale in db.sales.find({}):
+        sale_ids.add(sale["id"])
+        mov = await db.cash_movements.find_one({"reference_id": sale["id"], "category": "vendita"})
+        if not mov:
+            m = CashMovement(type="entrata", category="vendita", amount=float(sale["total"]),
+                             description=f"Vendita {sale['invoice_number']}", reference_id=sale["id"], date=sale["created_at"])
+            await db.cash_movements.insert_one(m.model_dump())
+            stats["sales_added"] += 1
+        elif abs(float(mov["amount"]) - float(sale["total"])) > 0.005:
+            await db.cash_movements.update_one({"id": mov["id"]}, {"$set": {"amount": float(sale["total"])}})
+            stats["sales_fixed"] += 1
+    async for mov in db.cash_movements.find({"category": "vendita", "reference_id": {"$ne": None}}):
+        if mov["reference_id"] not in sale_ids:
+            await db.cash_movements.delete_one({"id": mov["id"]})
+            stats["orphans_removed"] += 1
+    async for rep in db.repairs.find({"status": "consegnata", "paid": True, "final_price": {"$gt": 0}}):
+        if not await db.cash_movements.find_one({"reference_id": rep["id"], "category": "riparazione"}):
+            m = CashMovement(type="entrata", category="riparazione", amount=float(rep["final_price"]),
+                             description=f"Riparazione {rep['ticket_number']}", reference_id=rep["id"],
+                             date=rep.get("delivered_at") or rep["updated_at"])
+            await db.cash_movements.insert_one(m.model_dump())
+            stats["repairs_added"] += 1
+    async for part in db.parts.find({}):
+        if float(part.get("cost_price") or 0) <= 0:
+            continue
+        if not await db.cash_movements.find_one({"reference_id": part["id"], "category": "acquisto_ricambi"}):
+            qty = int(part.get("quantity", 0))
+            if qty > 0:
+                await record_part_purchase({**part, "entered_at": part.get("entered_at") or part.get("created_at")}, qty)
+                stats["parts_added"] += 1
+    return stats
+
+
+@api.post("/cash/sync")
+async def cash_sync(user: dict = Depends(get_current_user)):
+    return await sync_cash()
 
 
 # ---------- Suppliers ----------
@@ -1494,6 +1563,9 @@ async def cash_reference(mov_id: str, user: dict = Depends(get_current_user)):
     d = await db.refurbished.find_one({"$or": [{"id": ref}, {"refurb_costs.id": ref}]})
     if d:
         return {"type": "refurbished", "data": await enrich_refurb(d)}
+    p = await db.parts.find_one({"id": ref})
+    if p:
+        return {"type": "part", "data": clean(p)}
     return {"type": None, "data": None}
 
 
