@@ -70,6 +70,16 @@
 - ✅ Test iteration_4: backend 12/12, frontend E2E OK.
 - ⏭ Saltato su richiesta utente: creare ricondizionato dalla riparazione.
 
+## Implemented (2026-06 — sessione 4)
+- ✅ Listino interventi (/listino, API /services): 19 interventi precaricati, CRUD, prezzo
+  modificabile inline; nel form riparazione "Interventi da listino" con prezzo editabile,
+  totale suggerito e "Usa come preventivo"; interventi nella ricevuta PDF
+- ✅ Colore ricondizionato come select con colori per marca/modello (+ aggiunta colore
+  salvata sul modello, API /catalog/colors, /catalog/models/{id}/colors)
+- ✅ "Apri riparazione" dalla scheda ricondizionato: crea ticket precompilato collegato,
+  stato → in_ricondizionamento, blocco se già aperto
+- ✅ Test iteration_5: backend 9/9, frontend E2E OK.
+
 ## Backlog (P1/P2)
 - P1 Filtri per data su report (settimana/mese/trimestre/anno)
 - P1 Riordino rapido da "sotto scorta" → crea ordine precompilato al fornitore
