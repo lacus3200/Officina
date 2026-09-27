@@ -1,0 +1,125 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    :root {
+        --background: 0 0% 4%;
+        --foreground: 0 0% 100%;
+        --card: 0 0% 7%;
+        --card-foreground: 0 0% 100%;
+        --popover: 0 0% 7%;
+        --popover-foreground: 0 0% 100%;
+        --primary: 38 92% 50%;
+        --primary-foreground: 0 0% 8%;
+        --secondary: 0 0% 15%;
+        --secondary-foreground: 0 0% 100%;
+        --muted: 0 0% 12%;
+        --muted-foreground: 0 0% 64%;
+        --accent: 25 95% 53%;
+        --accent-foreground: 0 0% 100%;
+        --destructive: 0 72% 45%;
+        --destructive-foreground: 0 0% 98%;
+        --border: 0 0% 15%;
+        --input: 0 0% 15%;
+        --ring: 38 92% 50%;
+        --chart-1: 38 92% 50%;
+        --chart-2: 25 95% 53%;
+        --chart-3: 200 80% 55%;
+        --chart-4: 160 60% 45%;
+        --chart-5: 340 75% 55%;
+        --radius: 0.5rem;
+    }
+}
+
+@layer base {
+    * {
+        @apply border-border;
+    }
+
+    html,
+    body,
+    #root {
+        min-height: 100%;
+        background-color: hsl(var(--background));
+        color: hsl(var(--foreground));
+    }
+
+    body {
+        margin: 0;
+        font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        background-image:
+            radial-gradient(
+                600px 400px at 8% -10%,
+                rgba(217, 119, 6, 0.08),
+                transparent 60%
+            ),
+            radial-gradient(
+                500px 300px at 100% 110%,
+                rgba(234, 88, 12, 0.06),
+                transparent 60%
+            );
+        background-attachment: fixed;
+    }
+
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6,
+    .font-display {
+        font-family: "Manrope", ui-sans-serif, system-ui, sans-serif;
+        letter-spacing: -0.01em;
+    }
+
+    .font-mono,
+    code,
+    kbd {
+        font-family:
+            "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas,
+            monospace;
+    }
+
+    .eyebrow {
+        @apply text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground;
+    }
+
+    .noise::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        opacity: 0.035;
+        mix-blend-mode: overlay;
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='0.9'/></svg>");
+    }
+
+    ::selection {
+        background: hsl(38 92% 50% / 0.3);
+        color: hsl(0 0% 100%);
+    }
+
+    input,
+    textarea,
+    select,
+    button {
+        font-family: inherit;
+    }
+}
+
+@layer components {
+    .glass-nav {
+        backdrop-filter: blur(18px);
+        background: hsl(0 0% 4% / 0.72);
+        border-color: hsl(0 0% 100% / 0.08);
+    }
+
+    .kpi-value {
+        font-family: "Manrope", sans-serif;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+    }
+}

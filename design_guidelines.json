@@ -1,0 +1,137 @@
+{
+  "theme": "dark",
+  "archetype": "THE PERFORMANCE PRO (adapted for Technical Workshop)",
+  "typography": {
+    "fonts": {
+      "headings": "Manrope",
+      "body": "IBM Plex Sans",
+      "mono": "JetBrains Mono"
+    },
+    "scale": {
+      "h1": "text-4xl sm:text-5xl font-black tracking-tight",
+      "h2": "text-2xl sm:text-3xl font-bold tracking-tight",
+      "h3": "text-xl sm:text-2xl font-semibold",
+      "body": "text-base leading-relaxed",
+      "labels": "text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground"
+    },
+    "instruction": "Do not use Inter for headings. Use Manrope. Add IBM Plex Sans for body text. Load them via Google Fonts in index.html."
+  },
+  "colors": {
+    "palette": {
+      "background": "#0a0a0a",
+      "surface": "#121212",
+      "primary": "#d97706",
+      "primary_hover": "#f59e0b",
+      "secondary": "#262626",
+      "accent": "#ea580c",
+      "muted": "#404040",
+      "text_primary": "#ffffff",
+      "text_secondary": "#a3a3a3",
+      "border": "#262626"
+    },
+    "tailwind_vars": {
+      "background": "0 0% 4%",
+      "foreground": "0 0% 100%",
+      "card": "0 0% 7%",
+      "card-foreground": "0 0% 100%",
+      "popover": "0 0% 7%",
+      "popover-foreground": "0 0% 100%",
+      "primary": "38 92% 50%",
+      "primary-foreground": "0 0% 100%",
+      "secondary": "0 0% 15%",
+      "secondary-foreground": "0 0% 100%",
+      "muted": "0 0% 15%",
+      "muted-foreground": "0 0% 64%",
+      "accent": "25 95% 53%",
+      "accent-foreground": "0 0% 100%",
+      "destructive": "0 62.8% 30.6%",
+      "destructive-foreground": "0 0% 98%",
+      "border": "0 0% 15%",
+      "input": "0 0% 15%",
+      "ring": "38 92% 50%",
+      "radius": "0.5rem"
+    },
+    "rules": [
+      "Use deep obsidian/black base. Tint grey with subtle warm tones.",
+      "Never use pure white (#ffffff) for large backgrounds.",
+      "Primary CTA should be amber-600/orange-600. Ensure text on primary is white or very light for contrast.",
+      "For interactive states, use lighter hue on hover, e.g., hover:bg-amber-500."
+    ]
+  },
+  "visual_enhancers": {
+    "surfaces": "Grid Borders for dense data tables, Neumorphism (Crisp) for dashboard widgets. Cards should have 1px solid border with subtle ambient shadow.",
+    "glassmorphism": "Use for sticky headers/mobile nav only: backdrop-blur-xl bg-background/70 border-b border-white/10.",
+    "textures": "Subtle noise overlay (opacity 2-3%) on the main background to break the digital flatness and give a raw 'workshop' feel."
+  },
+  "layouts": {
+    "mobile_first": "Single column on mobile, utilizing bottom tab navigation or hamburger menu.",
+    "desktop_grid": "High Density Grid (Bento style). Sidebar navigation. Main content area: grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6.",
+    "spacing": "Generous spacing within cards (p-6). Between sections use gap-8 or py-8. Dense data tables can use tighter spacing.",
+    "alignment": "Left-align forms and dense data. Right-align numeric values in tables."
+  },
+  "components": {
+    "buttons": "Slightly rounded (rounded-md), crisp edges, hover state uses slight lift (-translate-y-[1px]) and shadow-lg.",
+    "cards": "Flat background (bg-card), 1px subtle border (border-border), no massive shadows by default.",
+    "inputs": "Shadcn components, border-border, focus:ring-2 focus:ring-primary focus:border-transparent.",
+    "tables": "Shadcn Table, alternating row colors (subtle bg-muted/30 on even rows), sticky header.",
+    "charts": "Recharts with lines/bars colored with primary and accent variables. Grid lines should be very subtle (#262626)."
+  },
+  "motion": {
+    "hover": "transition-all duration-200 ease-in-out",
+    "page_load": "Framer motion for staggered entrance of dashboard widgets (y: 10, opacity: 0 -> y: 0, opacity: 1, stagger: 0.1s).",
+    "modals": "Scale in from 0.95 and fade in."
+  },
+  "accessibility": {
+    "contrast": "Ensure APCA contrast minimums. Use text-foreground for body, text-muted-foreground for secondary.",
+    "focus": "All interactive elements must have visible focus-visible ring.",
+    "testing": "All interactive elements MUST have data-testid attributes (e.g., data-testid='new-repair-btn')."
+  },
+  "media": {
+    "images": [
+      {
+        "url": "https://images.unsplash.com/photo-1742989667140-c69adadf556b?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzNTl8MHwxfHNlYXJjaHwyfHxlbGVjdHJvbmljcyUyMHJlcGFpciUyMHdvcmtzaG9wfGVufDB8fHx8MTc5MDUxNjIxNnww&ixlib=rb-4.1.0&q=85",
+        "description": "Electronics repair shop with clutter, warm lighting",
+        "category": "landing_hero_or_login_background"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1767549707419-ceef47ff370d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwxfHxjaXJjdWl0JTIwYm9hcmQlMjBtYWNybyUyMGRhcmt8ZW58MHx8fHwxNzkwNTE2MjE1fDA&ixlib=rb-4.1.0&q=85",
+        "description": "Vintage nixie tube clock glowing orange",
+        "category": "empty_state_or_dashboard_accent"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1562568068-7a90cf9e499d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzNTl8MHwxfHNlYXJjaHwxfHxlbGVjdHJvbmljcyUyMHJlcGFpciUyMHdvcmtzaG9wfGVufDB8fHx8MTc5MDUxNjIxNnww&ixlib=rb-4.1.0&q=85",
+        "description": "Red and black soldering iron on workbench",
+        "category": "repair_ticket_placeholder"
+      }
+    ]
+  },
+  "libraries": {
+    "icons": "@phosphor-icons/react",
+    "charts": "recharts",
+    "animations": "framer-motion",
+    "notifications": "sonner"
+  },
+  "instructions_to_main_agent": [
+    "Install the required font families (Manrope and IBM Plex Sans) via Google Fonts in public/index.html.",
+    "Install @phosphor-icons/react for icons.",
+    "Update tailwind.config.js and index.css with the provided CSS variables for a strict dark theme.",
+    "Ensure 'data-testid' is added to all buttons, links, and forms.",
+    "Build the dashboard using a high-density grid for metrics and a detailed Shadcn table for recent repairs.",
+    "Implement mobile responsiveness rigorously (sidebar turns into bottom nav or hamburger menu).",
+    "Avoid using generic centered layouts; use technical/left-aligned data blocks.",
+    "Ensure React component files are generated as .js or .jsx, strictly avoiding .tsx extensions where applicable based on setup."
+  ],
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "Never use generic centered layouts or simplistic gradients.",
+    "Create depth through layered design elements with z-index hierarchy.",
+    "Use glass-morphism effects with backdrop filters (12-24px blur) for floating headers/navs.",
+    "DO NOT apply universal transition (transition: all). Use specific transitions (transition-colors, transition-opacity, etc.).",
+    "DO NOT center align the app container (.App { text-align: center; }).",
+    "Use modern button styles (rounded-md, crisp borders) with interaction animations.",
+    "NEVER use Emoji characters as icons.",
+    "Every interaction needs micro-animations (hover states, focus rings, entrance animations).",
+    "Use generous padding inside cards (p-6) but tight gaps (gap-4) between data widgets.",
+    "Prioritize using existing components from src/components/ui.",
+    "Use sonner for toast notifications."
+  ]
+}

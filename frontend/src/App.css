@@ -1,0 +1,20 @@
+/* app-level tweaks */
+.App {
+    min-height: 100vh;
+}
+
+/* scrollbar */
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: hsl(0 0% 18%);
+    border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: hsl(38 60% 40%);
+}
