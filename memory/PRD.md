@@ -59,6 +59,17 @@
   registra uscita cassa "acquisto".
 - ✅ Test iteration_3: backend 7/7, frontend E2E OK.
 
+## Implemented (2026-06 — sessione 3)
+- ✅ Cliente al volo (+) dentro il select cliente di Riparazioni, Vendite, vendita Ricondizionato
+- ✅ Catalogo marche/modelli precaricato (19 marche, ~150 modelli con codice tecnico tra
+  parentesi), aggiunta marche/modelli custom (API /catalog/*)
+- ✅ Avviso storico seriale/IMEI già passato in laboratorio (API /devices/history)
+- ✅ Cassa: click su movimento → dialog dettaglio documento collegato + link sezione
+- ✅ Ricondizionati: campi colore e grado estetico (A+/A/B/C/D)
+- ✅ Date entrata/uscita su riparazioni (received_at/delivered_at) e ricambi (entered_at/exited_at)
+- ✅ Test iteration_4: backend 12/12, frontend E2E OK.
+- ⏭ Saltato su richiesta utente: creare ricondizionato dalla riparazione.
+
 ## Backlog (P1/P2)
 - P1 Filtri per data su report (settimana/mese/trimestre/anno)
 - P1 Riordino rapido da "sotto scorta" → crea ordine precompilato al fornitore

@@ -1,0 +1,32 @@
+{
+  "summary": "Iteration 4 covers 6 new features: (1) quick-create customer from Repairs/Sales/Refurbished/Refurb-sell dialogs, (2) preloaded brand/model catalog with model code in parentheses + custom brand/model creation, (3) serial/IMEI history alert on Repair & Refurb forms, (4) Cassa row click opens reference dialog with linked doc details, (5) Refurbished color + grade fields shown in detail dialog, (6) received_at/delivered_at on repairs and entered_at/exited_at on parts with Entrata/Uscita column. Backend: 12/12 new pytest passing (test_iter4_features.py) covering catalog GET/POST/DELETE + case-insensitive dedup + model code, devices/history (short-string empty, case-insensitive match, exclude_id), cash/{id}/reference for repair/sale/refurb + 404 + manual, PUT repairs with received_at/delivered_at persistence, PUT parts with entered_at/exited_at persistence, POST refurbished with color+grade persistence. Frontend UI verified end-to-end: quick customer creation works and auto-selects in repair-customer-select & sale-customer-select & sell-customer-select; device-brand-select shows preloaded 'Apple/Samsung/...'; device-model-select shows 'iPhone 13 (A2633)' with code; 'Aggiungi marca…' and 'Aggiungi modello…' options open catalog-dialog, save and auto-select the created entry; serial-history-alert appears within ~1s when typing existing IMEI 'IMEI123456' showing RIP-00007 and disappears for a new unique serial; repair-received-date & repair-delivered-date persist and are rendered in the Entrata/Uscita table column (↓ 01/11/2025 ↑ 05/11/2025); part-entered-date & part-exited-date persist and render in Magazzino Entrata/Uscita column (↓ 01/10/2025 ↑ 15/10/2025); Cassa row click on a linked movement opens cash-reference-dialog with cash-reference-code (e.g. RIC-00010) and cash-reference-open button; manual movement shows 'Movimento manuale, nessun documento collegato.'; clicking the delete icon in a Cassa row does NOT open the reference dialog (stopPropagation works); Refurbished detail dialog shows 'Grado A+' badge (data-testid=refurb-grade) + color 'Nero' when the item has those fields set, and the sell section exposes sell-customer-select + quick-new-customer-button.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter4_features.py",
+    "/app/backend/tests/test_new_features.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/iter4.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py has now grown to 1332 lines and 3 new endpoint groups were added (catalog, devices/history, cash/{id}/reference) at the tail — should be split into routers (catalog.py, devices.py, cash.py) for maintainability. Same feedback as iteration 3.",
+    "PUT /api/parts uses PartIn (all fields required) instead of a Partial/Update model — a client that wants to patch only entered_at/exited_at must resend the whole object, else gets 422. Consider a PartUpdate BaseModel with all fields Optional, like RepairUpdate. Frontend currently sends full object so no runtime break, but API is inconsistent.",
+    "DELETE /api/catalog/brands/{brand_id} and /api/catalog/models/{model_id} silently return 200 even when the id does not exist — inconsistent with 404 raised on other DELETEs (still a pattern across the codebase).",
+    "POST /api/catalog/models auto-creates the parent brand if missing (via create_brand), but does not validate device_type against a whitelist — any string is stored.",
+    "cash_reference endpoint does 4 sequential find_one calls to resolve the ref type; consider a single $or query or tagging cash movement with reference_type at insert to avoid drift.",
+    "device_history sorts on created_at but returns limited fields — no pagination; a serial with many matches could dump 50 rows. OK for now given the alert only shows the top few.",
+    "RefurbFormDialog stores grade using a special sentinel 'none' string mapped to '' — works, but if the API ever returns grade=null the Select value becomes 'none' which is fine; just document the pattern.",
+    "The Entrata/Uscita column relies on frontend string parse of ISO date; ensure timezone consistency (dates are entered as YYYY-MM-DD but stored with a T00:00:00+00:00 offset, so users in negative UTC may see one day earlier)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter4_features.py"
+  ],
+  "success_rate": {"backend": "100% (12/12 new + 16/16 from previous iterations)", "frontend": "100% (16/16 UI assertions)"},
+  "test_credentials": "admin@lab.local / admin123",
+  "seed_data_creation": "Left a few TESTUI_ artifacts in DB (a repair, a refurbished RIC-00010 iPhone 14 Nero grade A+, a part TESTUI_Part_xxxx, a manual cash movement of 5€, a custom brand TESTUI_Brand_xxxx with a TESTUI_Model_xxxx (ZZ-999)). Safe to leave; if desired, main agent can wipe them.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Add-ons in this iteration are covered by /app/backend/tests/test_iter4_features.py (12 tests) plus test_new_features.py (7) + backend_test.py (9) = 28 backend tests, all green. UI selectors used are all data-testid based; note that Shadcn <Select> renders options in a portal — use role=option with the exact visible label (including the code in parentheses for models and the ' · Come nuovo' suffix for grade). The first option in refurb-grade-select is '—' (none) — do NOT pick .first when testing grade save. When opening a Cassa row, prefer clicking [data-testid=cash-row-{id}] (not the delete button which stops propagation). Existing DB fixture: repair RIP-00007 has serial 'IMEI123456' used for history alert tests.",
+  "rca of the issue": "No bugs found. All 6 new features work end-to-end. Only test-authoring pitfall: my initial refurb-grade UI test clicked '.first' role=option which selected the '—' (none) placeholder — after correcting to click 'A+ · Come nuovo' by name, the grade persisted and 'Grado A+' badge rendered in refurb-detail-dialog as expected."
+}
