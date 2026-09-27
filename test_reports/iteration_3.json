@@ -1,0 +1,31 @@
+{
+  "summary": "Iteration 3 covers the two new features: Ricondizionati (refurbished tracker) and Fornitori & Ordini (suppliers + purchase orders). Backend: 7/7 pytest passing (Suppliers CRUD + 404, PurchaseOrder full lifecycle with partial+total receive incrementing part stock and creating cash entries, receive on 'annullato' -> 400, receive on missing order -> 404, Refurbished create with cash outflow, add cost updates total_cost, sell creates Sale VEN-*, cash income, margin = sale_price - total_cost, sell twice -> 400, GET/sell on missing -> 404, /refurbished/summary aggregates in_stock/stock_value/margin). Frontend: end-to-end UI flow verified via Playwright — login -> /ricondizionati creates a device (KPI in-stock=1, stock-value=150€), opens detail dialog, adds a refurb cost of 30€ (total_cost becomes 180€), sells at 350€ (margin shown = 170,00 € == 350-180 correct), KPI sold and margin update, then delete. /fornitori: create supplier, switch to tab-orders, create order with free item (qty 4 * 5 = 20€), open detail, partial receive 2/4 -> row shows 'ORD-00004 — Arrivo parziale — 2/4 pz — 20,00 €', delete order and supplier all succeed. window.confirm dialogs auto-accepted. No console errors during flows (only pre-login 401 /auth/me is expected).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_new_features.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/new_features.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py has grown to 1157 lines — should be split into routers (suppliers.py, purchase_orders.py, refurbished.py) for maintainability.",
+    "DELETE /api/suppliers/{id}, /api/purchase-orders/{id}, /api/refurbished/{id} do not return 404 when the id does not exist (delete_one silently no-ops) — inconsistent with the 404 raised on PUT/GET.",
+    "PUT /api/refurbished/{id}: when purchase_cost is updated, only the first matching cash movement is updated via update_one. If the initial purchase_cost was 0 no movement was created, so a later update to a positive cost will silently NOT create a cash entry.",
+    "receive_order: computes 'spent' using unit_cost of each item but does NOT clamp negative received_qty; if a client sends a negative index or malformed payload it is silently ignored (OK), but there is no explicit 400 for empty/invalid receive payloads.",
+    "enrich_refurb performs N+1 DB lookups (one parts lookup per parts_used entry) on every list call — will not scale beyond a few hundred refurbished devices. Consider batching.",
+    "sell_refurbished duplicates Sale creation logic already present in POST /api/sales — extract a shared helper to avoid drift (e.g., cost_total, margin, cash entry).",
+    "OrderItem.received_qty is user-settable in PurchaseOrderIn/Update payloads; a client could pre-set it to bypass receive tracking. Consider stripping on create/update.",
+    "RefurbSellIn allows sale_price=0 (or negative); no validation. Also does not decrement any part stock (correctly by design since device itself is not in parts inventory)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_new_features.py"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@lab.local / admin123",
+  "seed_data_creation": "All test data prefixed TEST_/TESTUI_ and cleaned up in-test. Pre-existing artefacts from main-agent curl testing (ORD-00001 parziale, RIC-00001 Apple iPhone 11 Venduto) are still in DB — safe.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "New pytest file /app/backend/tests/test_new_features.py covers suppliers/orders/refurbished. Total pytest suite: iteration_2 backend_test.py (9 tests) + test_new_features.py (7 tests) = 16 all passing. Frontend UI verified for Ricondizionati (create/cost/sell/delete + KPIs) and Fornitori/Ordini (supplier+order+partial-receive+deletes). window.confirm handled via page.on('dialog'). data-testid coverage is excellent across new features.",
+  "rca of the issue": "No bugs found in the new features."
+}

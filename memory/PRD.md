@@ -47,10 +47,21 @@
 - ✅ Layout responsive (sidebar desktop, Sheet mobile)
 - ✅ Test end-to-end (backend 100%, frontend ~95%)
 
+## Implemented (2026-06 — sessione 2)
+- ✅ Ricondizionati (/ricondizionati): schede dispositivo con codice RIC-*, stato
+  (acquistato/in_ricondizionamento/pronto/venduto), timeline acquisto → riparazione
+  (ticket collegato, costo ricambi a cost_price) → costi extra → rivendita; costo
+  totale, margine previsto/finale, KPI riepilogo; vendita genera VEN-* + cassa;
+  acquisto e costi extra generano uscite di cassa.
+- ✅ Fornitori & Ordini (/fornitori): CRUD fornitori; ordini ORD-* con righe
+  (collegabili a ricambi), stato bozza/ordinato/parziale/ricevuto/annullato, arrivo
+  previsto, tracking; ricezione parziale/totale incrementa giacenza magazzino e
+  registra uscita cassa "acquisto".
+- ✅ Test iteration_3: backend 7/7, frontend E2E OK.
+
 ## Backlog (P1/P2)
-- P1 Fornitori (per acquisti ricambi + ordini)
-- P1 Dispositivi ricondizionati come entità con storia (acquisto, ricondizionamento, rivendita)
 - P1 Filtri per data su report (settimana/mese/trimestre/anno)
+- P1 Riordino rapido da "sotto scorta" → crea ordine precompilato al fornitore
 - P2 Export CSV movimenti cassa per commercialista
 - P2 Notifiche/promemoria consegna riparazioni via email/telegram
 - P2 QR code sulle etichette ricambio per scan rapido
