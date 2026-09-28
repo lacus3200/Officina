@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { api, formatApiError } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,10 +41,12 @@ import { CustomerSelect } from "@/components/CustomerSelect";
 import { DeviceBrandModelFields } from "@/components/DeviceBrandModelFields";
 import { SerialHistoryAlert } from "@/components/SerialHistoryAlert";
 import { RepairServicesField } from "@/components/RepairServicesField";
-import { useColumnWidths, ResizableTh, ScrollTable } from "@/components/ResizableTable";
+import { useColumnWidths, ResizableTh, ScrollTable, useTableSort, useSelection, SelectAllCheckbox, RowCheckbox, BulkBar, bulkDelete } from "@/components/ResizableTable";
 
 const COLS = ["Ticket", "Cliente", "Dispositivo", "Problema", "Stato", "Prezzo", "Entrata / Uscita", "Azioni"];
 const COL_DEFAULTS = [120, 170, 190, 260, 170, 110, 140, 130];
+const SORT_KEYS = ["ticket_number", "customer_name", "device", "problem", "status", "final_price", "received_at", null];
+const ACCESSORS = { ticket_number: (r) => r.ticket_number, customer_name: (r) => r.customer_name, device: (r) => `${r.device_brand || ""} ${r.device_model || ""}`, problem: (r) => r.problem, status: (r) => r.status, final_price: (r) => r.final_price || r.estimate, received_at: (r) => r.received_at || r.created_at };
 
 const isCompatible = (p, brand, model) => {
     if (!brand || !p.compatible_models?.length) return false;
@@ -89,6 +91,19 @@ export default function RepairsPage() {
     const [form, setForm] = useState(EMPTY);
     const [editingId, setEditingId] = useState(null);
     const [widths, setWidths, resetWidths] = useColumnWidths("repairs", COL_DEFAULTS);
+    const filtered = items;
+    const { sorted, sort, toggle: toggleSort } = useTableSort(filtered, ACCESSORS);
+    const sel = useSelection(sorted);
+    const [bulkBusy, setBulkBusy] = useState(false);
+    const removeSelected = async () => {
+        if (!window.confirm(`Eliminare ${sel.selected.size} riparazioni?`)) return;
+        setBulkBusy(true);
+        const res = await bulkDelete([...sel.selected], (id) => api.delete(`/repairs/${id}`));
+        setBulkBusy(false);
+        res.failed ? toast.warning(`${res.ok} eliminati, ${res.failed} non eliminabili`) : toast.success(`${res.ok} riparazioni eliminati`);
+        sel.clear();
+        load();
+    };
 
     const load = async () => {
         try {
@@ -523,6 +538,8 @@ export default function RepairsPage() {
                 </Select>
             </div>
 
+            <BulkBar count={sel.selected.size} onDelete={removeSelected} onClear={sel.clear} label="riparazioni" busy={bulkBusy} />
+
             <div className="flex justify-end">
                 <button className="text-xs text-muted-foreground hover:text-primary" onClick={resetWidths} data-testid="reset-columns-repairs">
                     Ripristina larghezza colonne
@@ -530,30 +547,32 @@ export default function RepairsPage() {
             </div>
             <Card>
                 <CardContent className="p-0">
-                    <ScrollTable widths={widths} testId="repairs-table-scroll">
+                    <ScrollTable widths={widths} testId="repairs-table-scroll" withSelect>
                         <thead>
                             <tr className="text-left text-muted-foreground border-b border-border">
+                                <th className="px-3 py-3 w-10"><SelectAllCheckbox checked={sel.allSelected} onChange={sel.toggleAll} testId="repairs-select-all" /></th>
                                 {COLS.map((c, i) => (
-                                    <ResizableTh key={c} index={i} widths={widths} setWidths={setWidths} testId={`repairs-th-${i}`} className={[5, 7].includes(i) ? "text-right" : ""}>
+                                    <ResizableTh key={c} index={i} widths={widths} setWidths={setWidths} testId={`repairs-th-${i}`} sortKey={SORT_KEYS[i]} sort={sort} onSort={toggleSort} className={[5, 7].includes(i) ? "text-right" : ""}>
                                         {c}
                                     </ResizableTh>
                                 ))}
                             </tr>
                         </thead>
                         <tbody>
-                            {items.length === 0 && (
+                            {sorted.length === 0 && (
                                 <tr>
-                                    <td colSpan={8} className="text-center py-14 text-muted-foreground">
+                                    <td colSpan={9} className="text-center py-14 text-muted-foreground">
                                         <Wrench className="h-8 w-8 mx-auto mb-2 opacity-40" />
                                         Nessuna riparazione trovata.
                                     </td>
                                 </tr>
                             )}
-                            {items.map((r, idx) => (
+                            {sorted.map((r, idx) => (
                                 <tr
                                     key={r.id}
                                     className={`border-b border-border/50 hover:bg-white/5 ${idx % 2 ? "bg-white/[0.02]" : ""}`}
                                 >
+                                    <RowCheckbox checked={sel.selected.has(r.id)} onChange={() => sel.toggle(r.id)} testId={`repairs-select-${r.id}`} />
                                     <td className="px-4 py-3 font-mono text-primary font-semibold">
                                         {r.ticket_number}
                                     </td>

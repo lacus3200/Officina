@@ -127,7 +127,7 @@ export default function Layout({ children }) {
                             </SheetTrigger>
                             <SheetContent
                                 side="left"
-                                className="w-72 bg-card border-border p-0"
+                                className="w-72 bg-card border-border p-0 flex flex-col overflow-y-auto"
                             >
                                 <div className="p-5 border-b border-border">
                                     <div className="font-display font-bold">
@@ -135,8 +135,10 @@ export default function Layout({ children }) {
                                     </div>
                                     <div className="eyebrow">Menu</div>
                                 </div>
-                                <NavItems onNavigate={() => setOpen(false)} />
-                                <div className="p-3 border-t border-border">
+                                <div className="flex-1 overflow-y-auto">
+                                    <NavItems onNavigate={() => setOpen(false)} />
+                                </div>
+                                <div className="p-3 border-t border-border shrink-0">
                                     <Button
                                         variant="ghost"
                                         className="w-full justify-start"

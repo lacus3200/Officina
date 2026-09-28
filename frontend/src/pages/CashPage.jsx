@@ -18,11 +18,13 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, ArrowUpRight, ArrowDownRight, Link2, RefreshCw } from "lucide-react";
-import { useColumnWidths, ResizableTh, ScrollTable } from "@/components/ResizableTable";
+import { Plus, Trash2, ArrowUpRight, ArrowDownRight, Link2, RefreshCw, Search } from "lucide-react";
+import { useColumnWidths, ResizableTh, ScrollTable, useTableSort, useSelection, SelectAllCheckbox, RowCheckbox, BulkBar, bulkDelete } from "@/components/ResizableTable";
 
 const COLS = ["Data", "Tipo", "Categoria", "Descrizione", "Importo", ""];
 const COL_DEFAULTS = [160, 100, 150, 420, 130, 70];
+const SORT_KEYS = ["date", "type", "category", "description", "amount", null];
+const ACCESSORS = { date: (m) => m.date, type: (m) => m.type, category: (m) => m.category, description: (m) => m.description, amount: (m) => m.amount };
 import { CashReferenceDialog } from "@/components/CashReferenceDialog";
 import { toast } from "sonner";
 import { currency, formatDateTime } from "@/lib/format";
@@ -32,6 +34,24 @@ export default function CashPage() {
     const [open, setOpen] = useState(false);
     const [detail, setDetail] = useState(null);
     const [widths, setWidths, resetWidths] = useColumnWidths("cash", COL_DEFAULTS);
+    const [tq, setTq] = useState("");
+    const filtered = useMemo(() => {
+        const t = tq.trim().toLowerCase();
+        if (!t) return items;
+        return items.filter((x) => [x.description, x.category, x.type, String(x.amount)].some((v) => String(v ?? "").toLowerCase().includes(t)));
+    }, [items, tq]);
+    const { sorted, sort, toggle: toggleSort } = useTableSort(filtered, ACCESSORS);
+    const sel = useSelection(sorted);
+    const [bulkBusy, setBulkBusy] = useState(false);
+    const removeSelected = async () => {
+        if (!window.confirm(`Eliminare ${sel.selected.size} movimenti?`)) return;
+        setBulkBusy(true);
+        const res = await bulkDelete([...sel.selected], (id) => api.delete(`/cash/${id}`));
+        setBulkBusy(false);
+        res.failed ? toast.warning(`${res.ok} eliminati, ${res.failed} non eliminabili`) : toast.success(`${res.ok} movimenti eliminati`);
+        sel.clear();
+        load();
+    };
     const [syncing, setSyncing] = useState(false);
 
     const syncNow = async () => {
@@ -229,6 +249,12 @@ export default function CashPage() {
                     </CardContent>
                 </Card>
             </div>
+            <div className="relative max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input className="pl-9" placeholder="Cerca descrizione, categoria, importo…" value={tq} onChange={(e) => setTq(e.target.value)} data-testid="cash-search" />
+            </div>
+
+            <BulkBar count={sel.selected.size} onDelete={removeSelected} onClear={sel.clear} label="movimenti" busy={bulkBusy} />
 
             <div className="flex justify-between items-center">
                 <Button variant="outline" size="sm" onClick={syncNow} disabled={syncing} data-testid="cash-sync-button">
@@ -240,31 +266,33 @@ export default function CashPage() {
             </div>
             <Card>
                 <CardContent className="p-0">
-                    <ScrollTable widths={widths} testId="cash-table-scroll">
+                    <ScrollTable widths={widths} testId="cash-table-scroll" withSelect>
                         <thead>
                             <tr className="text-left text-muted-foreground border-b border-border">
+                                <th className="px-3 py-3 w-10"><SelectAllCheckbox checked={sel.allSelected} onChange={sel.toggleAll} testId="cash-select-all" /></th>
                                 {COLS.map((c, i) => (
-                                    <ResizableTh key={i} index={i} widths={widths} setWidths={setWidths} testId={`cash-th-${i}`} className={i === 4 ? "text-right" : ""}>
+                                    <ResizableTh key={c} index={i} widths={widths} setWidths={setWidths} testId={`cash-th-${i}`} sortKey={SORT_KEYS[i]} sort={sort} onSort={toggleSort} className={i === 4 ? "text-right" : ""}>
                                         {c}
                                     </ResizableTh>
                                 ))}
                             </tr>
                         </thead>
                         <tbody>
-                            {items.length === 0 && (
+                            {sorted.length === 0 && (
                                 <tr>
-                                    <td colSpan={6} className="text-center py-14 text-muted-foreground">
+                                    <td colSpan={7} className="text-center py-14 text-muted-foreground">
                                         Nessun movimento registrato.
                                     </td>
                                 </tr>
                             )}
-                            {items.map((m, idx) => (
+                            {sorted.map((m, idx) => (
                                 <tr
                                     key={m.id}
                                     className={`border-b border-border/50 hover:bg-white/5 cursor-pointer ${idx % 2 ? "bg-white/[0.02]" : ""}`}
                                     onClick={() => setDetail(m)}
                                     data-testid={`cash-row-${m.id}`}
                                 >
+                                    <RowCheckbox checked={sel.selected.has(m.id)} onChange={() => sel.toggle(m.id)} testId={`cash-select-${m.id}`} />
                                     <td className="px-4 py-3 text-xs text-muted-foreground">
                                         {formatDateTime(m.date)}
                                     </td>

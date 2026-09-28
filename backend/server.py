@@ -276,6 +276,26 @@ class SaleIn(BaseModel):
     cost_total: float = 0.0
     payment_method: str = "contanti"
     notes: Optional[str] = None
+    date: Optional[str] = None
+
+
+class SaleUpdate(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    date: Optional[str] = None
+    customer_id: Optional[str] = None
+    customer_name: Optional[str] = None
+    payment_method: Optional[str] = None
+    notes: Optional[str] = None
+
+
+def sale_cash_description(sale: dict) -> str:
+    names = ", ".join(i["description"] for i in sale.get("items", []) if i.get("description"))
+    return f"Vendita {sale['invoice_number']}" + (f" · {names}" if names else "")
+
+
+def repair_cash_description(rep: dict) -> str:
+    dev = " ".join(x for x in [rep.get("device_brand"), rep.get("device_model")] if x)
+    return f"Riparazione {rep['ticket_number']}" + (f" · {dev}" if dev else "")
 
 
 class CashMovement(BaseModel):
@@ -452,6 +472,8 @@ class RefurbishedUpdate(BaseModel):
     status: Optional[RefurbStatus] = None
     repair_id: Optional[str] = None
     notes: Optional[str] = None
+    sold_at: Optional[str] = None
+    sale_price: Optional[float] = None
 
 
 class RefurbCostIn(BaseModel):
@@ -465,6 +487,7 @@ class RefurbSellIn(BaseModel):
     customer_name: Optional[str] = None
     payment_method: str = "contanti"
     notes: Optional[str] = None
+    sold_at: Optional[str] = None
 
 
 class BrandIn(BaseModel):
@@ -811,6 +834,24 @@ async def list_repairs(user: dict = Depends(get_current_user), status: Optional[
     return [clean(i) for i in items]
 
 
+def parts_qty_map(parts_used: list) -> dict:
+    out: dict = {}
+    for p in parts_used or []:
+        pid = p.get("part_id") if isinstance(p, dict) else p.part_id
+        qty = p.get("quantity", 1) if isinstance(p, dict) else p.quantity
+        if pid:
+            out[pid] = out.get(pid, 0) + int(qty or 0)
+    return out
+
+
+async def apply_parts_stock_delta(old_parts: list, new_parts: list):
+    old, new = parts_qty_map(old_parts), parts_qty_map(new_parts)
+    for pid in set(old) | set(new):
+        delta = new.get(pid, 0) - old.get(pid, 0)
+        if delta:
+            await db.parts.update_one({"id": pid}, {"$inc": {"quantity": -delta}, "$set": {"updated_at": now_iso()}})
+
+
 @api.post("/repairs")
 async def create_repair(body: RepairIn, user: dict = Depends(get_current_user)):
     seq = await next_sequence("repair")
@@ -819,6 +860,7 @@ async def create_repair(body: RepairIn, user: dict = Depends(get_current_user)):
     if not obj.received_at:
         obj.received_at = obj.created_at
     await db.repairs.insert_one(obj.model_dump())
+    await apply_parts_stock_delta([], obj.model_dump()["parts_used"])
     return obj
 
 
@@ -841,6 +883,10 @@ async def update_repair(repair_id: str, body: RepairUpdate, user: dict = Depends
         data["delivered_at"] = now_iso()
     await db.repairs.update_one({"id": repair_id}, {"$set": data})
     updated = clean(await db.repairs.find_one({"id": repair_id}))
+    if "parts_used" in data:
+        await apply_parts_stock_delta(existing.get("parts_used", []), updated.get("parts_used", []))
+    if data.get("status") == "annullata" and existing.get("status") != "annullata":
+        await apply_parts_stock_delta(updated.get("parts_used", []), [])
 
     # Se consegnata e pagata registra la cassa (se non già presente)
     if updated.get("status") == "consegnata" and updated.get("paid"):
@@ -850,7 +896,7 @@ async def update_repair(repair_id: str, body: RepairUpdate, user: dict = Depends
                 type="entrata",
                 category="riparazione",
                 amount=float(updated["final_price"]),
-                description=f"Riparazione {updated['ticket_number']}",
+                description=repair_cash_description(updated),
                 reference_id=repair_id,
             )
             await db.cash_movements.insert_one(mov.model_dump())
@@ -859,6 +905,9 @@ async def update_repair(repair_id: str, body: RepairUpdate, user: dict = Depends
 
 @api.delete("/repairs/{repair_id}")
 async def delete_repair(repair_id: str, user: dict = Depends(get_current_user)):
+    existing = await db.repairs.find_one({"id": repair_id})
+    if existing and existing.get("status") != "annullata":
+        await apply_parts_stock_delta(existing.get("parts_used", []), [])
     await db.repairs.delete_one({"id": repair_id})
     await db.cash_movements.delete_many({"reference_id": repair_id})
     return {"ok": True}
@@ -880,7 +929,10 @@ async def create_sale(body: SaleIn, user: dict = Depends(get_current_user)):
     if not data.get("total"):
         data["total"] = round(total, 2)
     margin = round(data["total"] - data.get("cost_total", 0), 2)
+    sale_date = data.pop("date", None)
     obj = Sale(invoice_number=invoice, margin=margin, **data)
+    if sale_date:
+        obj.created_at = sale_date
     await db.sales.insert_one(obj.model_dump())
 
     # decrement stock for referenced parts
@@ -893,11 +945,28 @@ async def create_sale(body: SaleIn, user: dict = Depends(get_current_user)):
         type="entrata",
         category="vendita",
         amount=obj.total,
-        description=f"Vendita {obj.invoice_number}",
+        description=sale_cash_description(obj.model_dump()),
         reference_id=obj.id,
+        date=obj.created_at,
     )
     await db.cash_movements.insert_one(mov.model_dump())
     return obj
+
+
+@api.put("/sales/{sale_id}")
+async def update_sale(sale_id: str, body: SaleUpdate, user: dict = Depends(get_current_user)):
+    existing = await db.sales.find_one({"id": sale_id})
+    if not existing:
+        raise HTTPException(404, "Vendita non trovata")
+    data = body.model_dump(exclude_unset=True)
+    new_date = data.pop("date", None)
+    if new_date:
+        data["created_at"] = new_date
+        await db.cash_movements.update_many({"reference_id": sale_id, "category": "vendita"}, {"$set": {"date": new_date}})
+        await db.refurbished.update_many({"sale_id": sale_id}, {"$set": {"sold_at": new_date}})
+    if data:
+        await db.sales.update_one({"id": sale_id}, {"$set": data})
+    return clean(await db.sales.find_one({"id": sale_id}))
 
 
 @api.get("/sales/{sale_id}")
@@ -957,13 +1026,14 @@ async def sync_sales_cash(stats: dict) -> set:
     async for sale in db.sales.find({}):
         sale_ids.add(sale["id"])
         mov = await db.cash_movements.find_one({"reference_id": sale["id"], "category": "vendita"})
+        desc = sale_cash_description(sale)
         if not mov:
             m = CashMovement(type="entrata", category="vendita", amount=float(sale["total"]),
-                             description=f"Vendita {sale['invoice_number']}", reference_id=sale["id"], date=sale["created_at"])
+                             description=desc, reference_id=sale["id"], date=sale["created_at"])
             await db.cash_movements.insert_one(m.model_dump())
             stats["sales_added"] += 1
-        elif abs(float(mov["amount"]) - float(sale["total"])) > 0.005:
-            await db.cash_movements.update_one({"id": mov["id"]}, {"$set": {"amount": float(sale["total"])}})
+        elif abs(float(mov["amount"]) - float(sale["total"])) > 0.005 or mov.get("description") != desc or mov.get("date") != sale["created_at"]:
+            await db.cash_movements.update_one({"id": mov["id"]}, {"$set": {"amount": float(sale["total"]), "description": desc, "date": sale["created_at"]}})
             stats["sales_fixed"] += 1
     return sale_ids
 
@@ -977,10 +1047,14 @@ async def remove_orphan_sale_movements(sale_ids: set, stats: dict):
 
 async def sync_repairs_cash(stats: dict):
     async for rep in db.repairs.find({"status": "consegnata", "paid": True, "final_price": {"$gt": 0}}):
-        if await db.cash_movements.find_one({"reference_id": rep["id"], "category": "riparazione"}):
+        mov = await db.cash_movements.find_one({"reference_id": rep["id"], "category": "riparazione"})
+        if mov:
+            desc = repair_cash_description(rep)
+            if mov.get("description") != desc:
+                await db.cash_movements.update_one({"id": mov["id"]}, {"$set": {"description": desc}})
             continue
         m = CashMovement(type="entrata", category="riparazione", amount=float(rep["final_price"]),
-                         description=f"Riparazione {rep['ticket_number']}", reference_id=rep["id"],
+                         description=repair_cash_description(rep), reference_id=rep["id"],
                          date=rep.get("delivered_at") or rep["updated_at"])
         await db.cash_movements.insert_one(m.model_dump())
         stats["repairs_added"] += 1
@@ -1251,6 +1325,17 @@ async def update_refurbished(ref_id: str, body: RefurbishedUpdate, user: dict = 
             {"reference_id": ref_id, "category": "acquisto"},
             {"$set": {"amount": float(data["purchase_cost"])}},
         )
+    if existing.get("sale_id") and ("sold_at" in data or "sale_price" in data):
+        upd = {}
+        if data.get("sold_at"):
+            upd["created_at"] = data["sold_at"]
+        if data.get("sale_price") is not None:
+            sale_doc = await db.sales.find_one({"id": existing["sale_id"]})
+            upd["total"] = float(data["sale_price"])
+            upd["items.0.unit_price"] = float(data["sale_price"])
+            upd["margin"] = round(float(data["sale_price"]) - float((sale_doc or {}).get("cost_total", 0)), 2)
+        if upd:
+            await db.sales.update_one({"id": existing["sale_id"]}, {"$set": upd})
     return await enrich_refurb(await db.refurbished.find_one({"id": ref_id}))
 
 
@@ -1304,16 +1389,18 @@ async def sell_refurbished(ref_id: str, body: RefurbSellIn, user: dict = Depends
         payment_method=body.payment_method,
         notes=body.notes,
     )
+    sold_at = body.sold_at or now_iso()
+    sale.created_at = sold_at
     await db.sales.insert_one(sale.model_dump())
     mov = CashMovement(
         type="entrata", category="vendita", amount=sale.total,
-        description=f"Vendita {sale.invoice_number} · {existing['code']}", reference_id=sale.id,
+        description=sale_cash_description(sale.model_dump()), reference_id=sale.id, date=sold_at,
     )
     await db.cash_movements.insert_one(mov.model_dump())
     await db.refurbished.update_one(
         {"id": ref_id},
         {"$set": {"status": "venduto", "sale_id": sale.id, "sale_price": body.sale_price,
-                  "sold_at": now_iso(), "updated_at": now_iso()}},
+                  "sold_at": sold_at, "updated_at": now_iso()}},
     )
     if existing.get("repair_id"):
         rep = await db.repairs.find_one({"id": existing["repair_id"], "status": {"$nin": ["consegnata", "annullata"]}})

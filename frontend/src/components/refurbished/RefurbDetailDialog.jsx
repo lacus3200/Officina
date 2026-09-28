@@ -73,7 +73,8 @@ function Timeline({ item }) {
 
 export function RefurbDetailDialog({ item, onOpenChange, onChanged }) {
     const [cost, setCost] = useState({ description: "", amount: "" });
-    const [sell, setSell] = useState({ sale_price: "", customer_id: "", customer_name: "", payment_method: "contanti" });
+    const [sell, setSell] = useState({ sale_price: "", customer_id: "", customer_name: "", payment_method: "contanti", sold_at: new Date().toISOString().slice(0, 10) });
+    const [soldEdit, setSoldEdit] = useState(null);
     const [customers, setCustomers] = useState([]);
     const [repairs, setRepairs] = useState([]);
     const [showSell, setShowSell] = useState(false);
@@ -116,6 +117,7 @@ export function RefurbDetailDialog({ item, onOpenChange, onChanged }) {
                     ...sell,
                     sale_price: Number(sell.sale_price),
                     customer_id: sell.customer_id || null,
+                    sold_at: sell.sold_at ? new Date(`${sell.sold_at}T12:00:00`).toISOString() : null,
                 }),
             "Dispositivo venduto",
         );
@@ -141,6 +143,23 @@ export function RefurbDetailDialog({ item, onOpenChange, onChanged }) {
                     <Stat label={item.status === "venduto" ? "Venduto a" : "Prezzo obiettivo"} value={currency(item.status === "venduto" ? item.sale_price : item.target_price)} />
                 </div>
 
+                {item.status === "venduto" && (
+                    <div className="flex items-center gap-2 text-sm" data-testid="sold-info">
+                        <span className="text-muted-foreground">Venduto il</span>
+                        {soldEdit ? (
+                            <>
+                                <Input type="date" className="h-8 w-40" value={soldEdit.sold_at} onChange={(e) => setSoldEdit({ ...soldEdit, sold_at: e.target.value })} data-testid="sold-date-edit-input" />
+                                <Input type="number" step="0.01" className="h-8 w-28" value={soldEdit.sale_price} onChange={(e) => setSoldEdit({ ...soldEdit, sale_price: e.target.value })} data-testid="sold-price-edit-input" />
+                                <Button size="sm" onClick={() => run(() => api.put(`/refurbished/${item.id}`, { sold_at: new Date(`${soldEdit.sold_at}T12:00:00`).toISOString(), sale_price: Number(soldEdit.sale_price) }).then(() => setSoldEdit(null)), "Vendita aggiornata")} data-testid="sold-edit-save">Salva</Button>
+                                <Button size="sm" variant="ghost" onClick={() => setSoldEdit(null)}>Annulla</Button>
+                            </>
+                        ) : (
+                            <button className="font-medium hover:text-primary hover:underline" onClick={() => setSoldEdit({ sold_at: (item.sold_at || "").slice(0, 10), sale_price: item.sale_price })} data-testid="sold-edit-button">
+                                {formatDate(item.sold_at)} · {currency(item.sale_price)} (modifica)
+                            </button>
+                        )}
+                    </div>
+                )}
                 {(item.specs || item.color || item.grade) && (
                     <p className="text-sm text-zinc-300 flex flex-wrap gap-2 items-center">
                         {item.grade && <span className="px-2 py-0.5 rounded-md border border-primary/40 bg-primary/10 text-primary font-mono text-xs" data-testid="refurb-grade">Grado {item.grade}</span>}
@@ -256,7 +275,11 @@ export function RefurbDetailDialog({ item, onOpenChange, onChanged }) {
                                 </Button>
                             ) : (
                                 <div className="space-y-3 rounded-md border border-primary/30 bg-primary/5 p-4">
-                                    <div className="grid grid-cols-2 gap-3">
+                                    <div className="grid grid-cols-3 gap-3">
+                                        <div>
+                                            <Label className="eyebrow">Data vendita</Label>
+                                            <Input type="date" value={sell.sold_at} onChange={(e) => setSell({ ...sell, sold_at: e.target.value })} data-testid="sell-date-input" />
+                                        </div>
                                         <div>
                                             <Label className="eyebrow">Prezzo di vendita €</Label>
                                             <Input type="number" step="0.01" value={sell.sale_price} onChange={(e) => setSell({ ...sell, sale_price: e.target.value })} data-testid="sell-price-input" />

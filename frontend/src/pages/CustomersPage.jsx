@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { api, formatApiError } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,10 +26,12 @@ import {
 import { Plus, Search, Pencil, Trash2, Phone, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { formatDate } from "@/lib/format";
-import { useColumnWidths, ResizableTh, ScrollTable } from "@/components/ResizableTable";
+import { useColumnWidths, ResizableTh, ScrollTable, useTableSort, useSelection, SelectAllCheckbox, RowCheckbox, BulkBar, bulkDelete } from "@/components/ResizableTable";
 
 const COLS = ["Cliente", "Telefono", "Email", "Indirizzo", "Note", "Dal", "Azioni"];
 const COL_DEFAULTS = [220, 140, 220, 220, 260, 110, 110];
+const SORT_KEYS = ["name", "phone", "email", "address", "notes", "created_at", null];
+const ACCESSORS = { name: (c) => c.name, phone: (c) => c.phone, email: (c) => c.email, address: (c) => c.address, notes: (c) => c.notes, created_at: (c) => c.created_at };
 
 const EMPTY = { name: "", phone: "", email: "", address: "", notes: "" };
 
@@ -40,6 +42,19 @@ export default function CustomersPage() {
     const [form, setForm] = useState(EMPTY);
     const [editingId, setEditingId] = useState(null);
     const [widths, setWidths, resetWidths] = useColumnWidths("customers", COL_DEFAULTS);
+    const filtered = items;
+    const { sorted, sort, toggle: toggleSort } = useTableSort(filtered, ACCESSORS);
+    const sel = useSelection(sorted);
+    const [bulkBusy, setBulkBusy] = useState(false);
+    const removeSelected = async () => {
+        if (!window.confirm(`Eliminare ${sel.selected.size} clienti?`)) return;
+        setBulkBusy(true);
+        const res = await bulkDelete([...sel.selected], (id) => api.delete(`/customers/${id}`));
+        setBulkBusy(false);
+        res.failed ? toast.warning(`${res.ok} eliminati, ${res.failed} non eliminabili`) : toast.success(`${res.ok} clienti eliminati`);
+        sel.clear();
+        load();
+    };
 
     const load = async () => {
         try {
@@ -199,6 +214,8 @@ export default function CustomersPage() {
                 />
             </div>
 
+            <BulkBar count={sel.selected.size} onDelete={removeSelected} onClear={sel.clear} label="clienti" busy={bulkBusy} />
+
             <div className="flex justify-end">
                 <button className="text-xs text-muted-foreground hover:text-primary" onClick={resetWidths} data-testid="reset-columns-customers">
                     Ripristina larghezza colonne
@@ -206,24 +223,26 @@ export default function CustomersPage() {
             </div>
             <Card>
                 <CardContent className="p-0">
-                    <ScrollTable widths={widths} testId="customers-table-scroll">
+                    <ScrollTable widths={widths} testId="customers-table-scroll" withSelect>
                         <thead>
                             <tr className="text-left text-muted-foreground border-b border-border">
+                                <th className="px-3 py-3 w-10"><SelectAllCheckbox checked={sel.allSelected} onChange={sel.toggleAll} testId="customers-select-all" /></th>
                                 {COLS.map((c, i) => (
-                                    <ResizableTh key={c} index={i} widths={widths} setWidths={setWidths} testId={`customers-th-${i}`} className={i === 6 ? "text-right" : ""}>
+                                    <ResizableTh key={c} index={i} widths={widths} setWidths={setWidths} testId={`customers-th-${i}`} sortKey={SORT_KEYS[i]} sort={sort} onSort={toggleSort} className={i === 6 ? "text-right" : ""}>
                                         {c}
                                     </ResizableTh>
                                 ))}
                             </tr>
                         </thead>
                         <tbody>
-                            {items.length === 0 && (
+                            {sorted.length === 0 && (
                                 <tr>
-                                    <td colSpan={7} className="text-center py-14 text-muted-foreground">Nessun cliente registrato.</td>
+                                    <td colSpan={8} className="text-center py-14 text-muted-foreground">Nessun cliente registrato.</td>
                                 </tr>
                             )}
-                            {items.map((c, idx) => (
+                            {sorted.map((c, idx) => (
                                 <tr key={c.id} className={`border-b border-border/50 hover:bg-white/5 ${idx % 2 ? "bg-white/[0.02]" : ""}`}>
+                                    <RowCheckbox checked={sel.selected.has(c.id)} onChange={() => sel.toggle(c.id)} testId={`customers-select-${c.id}`} />
                                     <td className="px-4 py-3 font-medium truncate" data-testid={`customer-name-${c.id}`} title={c.name}>{c.name}</td>
                                     <td className="px-4 py-3 truncate">
                                         {c.phone ? <span className="inline-flex items-center gap-1.5"><Phone className="h-3.5 w-3.5 text-muted-foreground" />{c.phone}</span> : "—"}

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { api, formatApiError } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,15 +19,17 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Printer, Trash2, ShoppingCart } from "lucide-react";
+import { Plus, Printer, Trash2, ShoppingCart, Search } from "lucide-react";
 import { toast } from "sonner";
 import { currency, formatDateTime } from "@/lib/format";
 import { printSaleInvoice } from "@/lib/pdf";
 import { CustomerSelect } from "@/components/CustomerSelect";
-import { useColumnWidths, ResizableTh, ScrollTable } from "@/components/ResizableTable";
+import { useColumnWidths, ResizableTh, ScrollTable, useTableSort, useSelection, SelectAllCheckbox, RowCheckbox, BulkBar, bulkDelete } from "@/components/ResizableTable";
 
 const COLS = ["Fattura", "Cliente", "Articoli", "Pagamento", "Totale", "Margine", "Data", "Azioni"];
 const COL_DEFAULTS = [120, 180, 300, 120, 110, 110, 130, 110];
+const SORT_KEYS = ["invoice_number", "customer_name", "items", "payment_method", "total", "margin", "created_at", null];
+const ACCESSORS = { invoice_number: (s) => s.invoice_number, customer_name: (s) => s.customer_name, items: (s) => s.items?.map((i) => i.description).join(", "), payment_method: (s) => s.payment_method, total: (s) => s.total, margin: (s) => s.margin, created_at: (s) => s.created_at };
 
 const EMPTY_ITEM = { part_id: "", description: "", quantity: 1, unit_price: 0 };
 
@@ -37,13 +39,44 @@ export default function SalesPage() {
     const [customers, setCustomers] = useState([]);
     const [open, setOpen] = useState(false);
     const [widths, setWidths, resetWidths] = useColumnWidths("sales", COL_DEFAULTS);
+    const [tq, setTq] = useState("");
+    const filtered = useMemo(() => {
+        const t = tq.trim().toLowerCase();
+        if (!t) return items;
+        return items.filter((x) => [x.invoice_number, x.customer_name, x.payment_method, x.notes, ...(x.items || []).map((i) => i.description)].some((v) => String(v ?? "").toLowerCase().includes(t)));
+    }, [items, tq]);
+    const { sorted, sort, toggle: toggleSort } = useTableSort(filtered, ACCESSORS);
+    const sel = useSelection(sorted);
+    const [bulkBusy, setBulkBusy] = useState(false);
+    const removeSelected = async () => {
+        if (!window.confirm(`Eliminare ${sel.selected.size} vendite?`)) return;
+        setBulkBusy(true);
+        const res = await bulkDelete([...sel.selected], (id) => api.delete(`/sales/${id}`));
+        setBulkBusy(false);
+        res.failed ? toast.warning(`${res.ok} eliminati, ${res.failed} non eliminabili`) : toast.success(`${res.ok} vendite eliminati`);
+        sel.clear();
+        load();
+    };
     const [form, setForm] = useState({
         customer_id: "",
         customer_name: "",
         items: [{ ...EMPTY_ITEM }],
         payment_method: "contanti",
         notes: "",
+        date: "",
     });
+    const [dateEdit, setDateEdit] = useState(null);
+
+    const saveDate = async () => {
+        try {
+            await api.put(`/sales/${dateEdit.id}`, { date: new Date(`${dateEdit.date}T12:00:00`).toISOString() });
+            toast.success("Data vendita aggiornata");
+            setDateEdit(null);
+            load();
+        } catch (e) {
+            toast.error(formatApiError(e));
+        }
+    };
 
     const load = async () => {
         try {
@@ -86,6 +119,7 @@ export default function SalesPage() {
         try {
             await api.post("/sales", {
                 ...form,
+                date: form.date ? new Date(`${form.date}T12:00:00`).toISOString() : null,
                 total,
                 cost_total: costTotal,
             });
@@ -97,6 +131,7 @@ export default function SalesPage() {
                 items: [{ ...EMPTY_ITEM }],
                 payment_method: "contanti",
                 notes: "",
+                date: "",
             });
             load();
         } catch (e) {
@@ -146,6 +181,10 @@ export default function SalesPage() {
                                         onCreated={(c) => setCustomers((prev) => [c, ...prev])}
                                         onChange={(id, c) => setForm({ ...form, customer_id: id, customer_name: c?.name || "" })}
                                     />
+                                </div>
+                                <div>
+                                    <Label className="eyebrow">Data vendita</Label>
+                                    <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} data-testid="sale-date-input" />
                                 </div>
                                 <div>
                                     <Label className="eyebrow">Pagamento</Label>
@@ -308,6 +347,12 @@ export default function SalesPage() {
                     </DialogContent>
                 </Dialog>
             </div>
+            <div className="relative max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input className="pl-9" placeholder="Cerca fattura, cliente, articolo…" value={tq} onChange={(e) => setTq(e.target.value)} data-testid="sales-search" />
+            </div>
+
+            <BulkBar count={sel.selected.size} onDelete={removeSelected} onClear={sel.clear} label="vendite" busy={bulkBusy} />
 
             <div className="flex justify-end">
                 <button className="text-xs text-muted-foreground hover:text-primary" onClick={resetWidths} data-testid="reset-columns-sales">
@@ -316,30 +361,32 @@ export default function SalesPage() {
             </div>
             <Card>
                 <CardContent className="p-0">
-                    <ScrollTable widths={widths} testId="sales-table-scroll">
+                    <ScrollTable widths={widths} testId="sales-table-scroll" withSelect>
                         <thead>
                             <tr className="text-left text-muted-foreground border-b border-border">
+                                <th className="px-3 py-3 w-10"><SelectAllCheckbox checked={sel.allSelected} onChange={sel.toggleAll} testId="sales-select-all" /></th>
                                 {COLS.map((c, i) => (
-                                    <ResizableTh key={c} index={i} widths={widths} setWidths={setWidths} testId={`sales-th-${i}`} className={[4, 5, 7].includes(i) ? "text-right" : ""}>
+                                    <ResizableTh key={c} index={i} widths={widths} setWidths={setWidths} testId={`sales-th-${i}`} sortKey={SORT_KEYS[i]} sort={sort} onSort={toggleSort} className={[4, 5, 7].includes(i) ? "text-right" : ""}>
                                         {c}
                                     </ResizableTh>
                                 ))}
                             </tr>
                         </thead>
                         <tbody>
-                            {items.length === 0 && (
+                            {sorted.length === 0 && (
                                 <tr>
-                                    <td colSpan={8} className="text-center py-14 text-muted-foreground">
+                                    <td colSpan={9} className="text-center py-14 text-muted-foreground">
                                         <ShoppingCart className="h-8 w-8 mx-auto mb-2 opacity-40" />
                                         Nessuna vendita registrata.
                                     </td>
                                 </tr>
                             )}
-                            {items.map((s, idx) => (
+                            {sorted.map((s, idx) => (
                                 <tr
                                     key={s.id}
                                     className={`border-b border-border/50 hover:bg-white/5 ${idx % 2 ? "bg-white/[0.02]" : ""}`}
                                 >
+                                    <RowCheckbox checked={sel.selected.has(s.id)} onChange={() => sel.toggle(s.id)} testId={`sales-select-${s.id}`} />
                                     <td className="px-4 py-3 font-mono text-primary font-semibold">
                                         {s.invoice_number}
                                     </td>
@@ -359,7 +406,14 @@ export default function SalesPage() {
                                         {currency(s.margin)}
                                     </td>
                                     <td className="px-4 py-3 text-xs text-muted-foreground">
-                                        {formatDateTime(s.created_at)}
+                                        <button
+                                            className="hover:text-primary underline-offset-2 hover:underline text-left"
+                                            title="Modifica data vendita"
+                                            onClick={() => setDateEdit({ id: s.id, date: s.created_at.slice(0, 10) })}
+                                            data-testid={`sale-date-${s.id}`}
+                                        >
+                                            {formatDateTime(s.created_at)}
+                                        </button>
                                     </td>
                                     <td className="px-4 py-3">
                                         <div className="flex gap-1 justify-end">
@@ -388,6 +442,13 @@ export default function SalesPage() {
                     </ScrollTable>
                 </CardContent>
             </Card>
+            <Dialog open={!!dateEdit} onOpenChange={(v) => !v && setDateEdit(null)}>
+                <DialogContent className="bg-card border-border max-w-sm" data-testid="sale-date-dialog">
+                    <DialogHeader><DialogTitle>Modifica data vendita</DialogTitle></DialogHeader>
+                    <Input type="date" value={dateEdit?.date || ""} onChange={(e) => setDateEdit({ ...dateEdit, date: e.target.value })} data-testid="sale-date-edit-input" />
+                    <Button onClick={saveDate} disabled={!dateEdit?.date} data-testid="sale-date-save">Salva</Button>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

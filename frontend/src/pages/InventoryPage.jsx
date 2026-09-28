@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { api, formatApiError } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,11 +25,13 @@ import { currency, formatDate, PART_CONDITION, PART_STATUS } from "@/lib/format"
 import { printPartLabel } from "@/lib/pdf";
 import { PartNameSelect, CompatibleModelsField, PartCategorySelect, PartBrandSelect } from "@/components/PartCatalogFields";
 import { PartCatalogManager } from "@/components/PartCatalogManager";
-import { useColumnWidths, ResizableTh, ScrollTable } from "@/components/ResizableTable";
+import { useColumnWidths, ResizableTh, ScrollTable, useTableSort, useSelection, SelectAllCheckbox, RowCheckbox, BulkBar, bulkDelete } from "@/components/ResizableTable";
 import { Settings2 } from "lucide-react";
 
 const COLS = ["Nome", "Marca", "Categoria", "Condizione", "Stato", "Q.tà", "Costo", "Prezzo", "Posizione", "Entrata / Uscita", "Azioni"];
 const COL_DEFAULTS = [240, 130, 130, 120, 130, 90, 100, 100, 110, 140, 130];
+const SORT_KEYS = ["name", "brand", "category", "condition", "status", "quantity", "cost_price", "sell_price", "location", "entered_at", null];
+const ACCESSORS = { name: (p) => p.name, brand: (p) => p.brand, category: (p) => p.category, condition: (p) => p.condition, status: (p) => p.status, quantity: (p) => p.quantity, cost_price: (p) => p.cost_price, sell_price: (p) => p.sell_price, location: (p) => p.location, entered_at: (p) => p.entered_at || p.created_at };
 
 const EMPTY = {
     name: "",
@@ -62,6 +64,19 @@ export default function InventoryPage() {
     const [editingId, setEditingId] = useState(null);
     const [manageOpen, setManageOpen] = useState(false);
     const [widths, setWidths, resetWidths] = useColumnWidths("inventory", COL_DEFAULTS);
+    const filtered = items;
+    const { sorted, sort, toggle: toggleSort } = useTableSort(filtered, ACCESSORS);
+    const sel = useSelection(sorted);
+    const [bulkBusy, setBulkBusy] = useState(false);
+    const removeSelected = async () => {
+        if (!window.confirm(`Eliminare ${sel.selected.size} ricambi?`)) return;
+        setBulkBusy(true);
+        const res = await bulkDelete([...sel.selected], (id) => api.delete(`/parts/${id}`));
+        setBulkBusy(false);
+        res.failed ? toast.warning(`${res.ok} eliminati, ${res.failed} non eliminabili`) : toast.success(`${res.ok} ricambi eliminati`);
+        sel.clear();
+        load();
+    };
 
     const load = async () => {
         try {
@@ -348,34 +363,36 @@ export default function InventoryPage() {
 
             <Card>
                 <CardContent className="p-0">
-                    <ScrollTable widths={widths} testId="inventory-table-scroll">
+                    <ScrollTable widths={widths} testId="inventory-table-scroll" withSelect>
                         <thead>
                             <tr className="text-left text-muted-foreground border-b border-border">
+                                <th className="px-3 py-3 w-10"><SelectAllCheckbox checked={sel.allSelected} onChange={sel.toggleAll} testId="inventory-select-all" /></th>
                                 {COLS.map((c, i) => (
-                                    <ResizableTh key={c} index={i} widths={widths} setWidths={setWidths} testId={`inventory-th-${i}`} className={[5, 6, 7, 10].includes(i) ? "text-right" : ""}>
+                                    <ResizableTh key={c} index={i} widths={widths} setWidths={setWidths} testId={`inventory-th-${i}`} sortKey={SORT_KEYS[i]} sort={sort} onSort={toggleSort} className={[5, 6, 7, 10].includes(i) ? "text-right" : ""}>
                                         {c}
                                     </ResizableTh>
                                 ))}
                             </tr>
                         </thead>
                         <tbody>
-                            {items.length === 0 && (
+                            {sorted.length === 0 && (
                                 <tr>
                                     <td
-                                        colSpan={11}
+                                        colSpan={12}
                                         className="text-center py-14 text-muted-foreground"
                                     >
                                         Nessun ricambio nel magazzino.
                                     </td>
                                 </tr>
                             )}
-                            {items.map((p, idx) => {
+                            {sorted.map((p, idx) => {
                                 const low = p.quantity <= p.min_quantity;
                                 return (
                                     <tr
                                         key={p.id}
                                         className={`border-b border-border/50 hover:bg-white/5 ${idx % 2 ? "bg-white/[0.02]" : ""}`}
                                     >
+                                    <RowCheckbox checked={sel.selected.has(p.id)} onChange={() => sel.toggle(p.id)} testId={`inventory-select-${p.id}`} />
                                         <td className="px-4 py-3">
                                             <div className="font-medium" data-testid={`part-row-${p.id}`}>
                                                 {p.name}

@@ -5,7 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, X } from "lucide-react";
+import { Plus, X, Check, ChevronsUpDown } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { toast } from "sonner";
 
 const NEW = "__new__";
@@ -16,6 +18,7 @@ export function PartNameSelect({ value, onSelect }) {
     const [open, setOpen] = useState(false);
     const [draft, setDraft] = useState({ name: "", category: "" });
     const [free, setFree] = useState(false);
+    const [pickerOpen, setPickerOpen] = useState(false);
 
     const load = () => api.get("/catalog/parts").then((r) => setTemplates(r.data)).catch(() => {});
     useEffect(() => { load(); }, []);
@@ -57,28 +60,40 @@ export function PartNameSelect({ value, onSelect }) {
 
     return (
         <>
-            <Select
-                value={value || "none"}
-                onValueChange={(v) => {
-                    if (v === NEW) { setDraft({ name: "", category: "" }); setOpen(true); return; }
-                    if (v === FREE) { setFree(true); onSelect("", null); return; }
-                    const t = templates.find((x) => x.name === v);
-                    onSelect(v === "none" ? "" : v, t?.category || null);
-                }}
-            >
-                <SelectTrigger data-testid="part-name-select"><SelectValue placeholder="Scegli dal catalogo ricambi…" /></SelectTrigger>
-                <SelectContent className="max-h-80">
-                    <SelectItem value="none">—</SelectItem>
-                    {Object.entries(grouped).map(([cat, list]) => (
-                        <React.Fragment key={cat}>
-                            <div className="px-2 pt-2 pb-1 eyebrow">{cat}</div>
-                            {list.map((t) => <SelectItem key={t.id} value={t.name}>{t.name}</SelectItem>)}
-                        </React.Fragment>
-                    ))}
-                    <SelectItem value={NEW} className="text-primary"><span className="flex items-center gap-1"><Plus className="h-3 w-3" /> Aggiungi al catalogo…</span></SelectItem>
-                    <SelectItem value={FREE}>✎ Nome libero (una tantum)</SelectItem>
-                </SelectContent>
-            </Select>
+            <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+                <PopoverTrigger asChild>
+                    <Button type="button" variant="outline" role="combobox" className="w-full justify-between font-normal" data-testid="part-name-select">
+                        <span className={value ? "" : "text-muted-foreground"}>{value || "Cerca nel catalogo ricambi…"}</span>
+                        <ChevronsUpDown className="h-4 w-4 opacity-50 shrink-0" />
+                    </Button>
+                </PopoverTrigger>
+                <PopoverContent className="p-0 w-[var(--radix-popover-trigger-width)] bg-card border-border" align="start">
+                    <Command>
+                        <CommandInput placeholder="Digita per cercare…" data-testid="part-name-search-input" />
+                        <CommandList className="max-h-72">
+                            <CommandEmpty>Nessun ricambio trovato.</CommandEmpty>
+                            {Object.entries(grouped).map(([cat, list]) => (
+                                <CommandGroup key={cat} heading={cat}>
+                                    {list.map((t) => (
+                                        <CommandItem key={t.id} value={`${t.name} ${t.category}`} onSelect={() => { onSelect(t.name, t.category || null); setPickerOpen(false); }} data-testid={`part-name-option-${t.id}`}>
+                                            <Check className={`mr-2 h-4 w-4 ${value === t.name ? "opacity-100" : "opacity-0"}`} />
+                                            {t.name}
+                                        </CommandItem>
+                                    ))}
+                                </CommandGroup>
+                            ))}
+                            <CommandGroup heading="Altro">
+                                <CommandItem value="__aggiungi_catalogo__" onSelect={() => { setPickerOpen(false); setDraft({ name: "", category: "" }); setOpen(true); }} className="text-primary" data-testid="part-name-add-option">
+                                    <Plus className="mr-2 h-4 w-4" /> Aggiungi al catalogo…
+                                </CommandItem>
+                                <CommandItem value="__nome_libero__" onSelect={() => { setPickerOpen(false); setFree(true); onSelect("", null); }} data-testid="part-name-free-option">
+                                    ✎ Nome libero (una tantum)
+                                </CommandItem>
+                            </CommandGroup>
+                        </CommandList>
+                    </Command>
+                </PopoverContent>
+            </Popover>
             <Dialog open={open} onOpenChange={setOpen}>
                 <DialogContent className="bg-card border-border max-w-sm" data-testid="part-template-dialog">
                     <DialogHeader><DialogTitle>Nuovo ricambio nel catalogo</DialogTitle></DialogHeader>
