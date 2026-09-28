@@ -45,7 +45,7 @@ function Timeline({ item }) {
                   {
                       icon: Wrench,
                       title: `Riparazione ${item.repair.ticket_number}`,
-                      sub: `${item.repair.problem} · ricambi ${currency(item.parts_cost)}`,
+                      sub: `${item.repair.problem} · ricambi ${currency(item.parts_cost)}${item.repair.parts_used?.length ? " (" + item.repair.parts_used.filter((p) => p.part_id).map((p) => `${p.part_name} ×${p.quantity}${p.surcharge ? ` +${currency(p.surcharge)}` : ""}`).join(", ") + ")" : ""}`,
                       date: null,
                   },
               ]

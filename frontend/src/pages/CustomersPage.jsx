@@ -27,6 +27,7 @@ import { Plus, Search, Pencil, Trash2, Phone, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { formatDate } from "@/lib/format";
 import { useColumnWidths, ResizableTh, ScrollTable, useTableSort, useSelection, SelectAllCheckbox, RowCheckbox, BulkBar, bulkDelete } from "@/components/ResizableTable";
+import { DetailDialog } from "@/components/DetailDialog";
 
 const COLS = ["Cliente", "Telefono", "Email", "Indirizzo", "Note", "Dal", "Azioni"];
 const COL_DEFAULTS = [220, 140, 220, 220, 260, 110, 110];
@@ -46,6 +47,7 @@ export default function CustomersPage() {
     const { sorted, sort, toggle: toggleSort } = useTableSort(filtered, ACCESSORS);
     const sel = useSelection(sorted);
     const [bulkBusy, setBulkBusy] = useState(false);
+    const [rowDetail, setRowDetail] = useState(null);
     const removeSelected = async () => {
         if (!window.confirm(`Eliminare ${sel.selected.size} clienti?`)) return;
         setBulkBusy(true);
@@ -241,7 +243,7 @@ export default function CustomersPage() {
                                 </tr>
                             )}
                             {sorted.map((c, idx) => (
-                                <tr key={c.id} className={`border-b border-border/50 hover:bg-white/5 ${idx % 2 ? "bg-white/[0.02]" : ""}`}>
+                                <tr key={c.id} onClick={() => setRowDetail(c)} data-testid={`customer-row-${c.id}`} className={`border-b border-border/50 hover:bg-white/5 cursor-pointer ${idx % 2 ? "bg-white/[0.02]" : ""}`}>
                                     <RowCheckbox checked={sel.selected.has(c.id)} onChange={() => sel.toggle(c.id)} testId={`customers-select-${c.id}`} />
                                     <td className="px-4 py-3 font-medium truncate" data-testid={`customer-name-${c.id}`} title={c.name}>{c.name}</td>
                                     <td className="px-4 py-3 truncate">
@@ -253,7 +255,7 @@ export default function CustomersPage() {
                                     <td className="px-4 py-3 truncate text-muted-foreground" title={c.address}>{c.address || "—"}</td>
                                     <td className="px-4 py-3 truncate text-xs text-muted-foreground" title={c.notes}>{c.notes || "—"}</td>
                                     <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">{formatDate(c.created_at)}</td>
-                                    <td className="px-4 py-3">
+                                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                                         <div className="flex gap-1 justify-end">
                                             <Button variant="ghost" size="icon" data-testid={`edit-customer-${c.id}`} onClick={() => edit(c)}>
                                                 <Pencil className="h-4 w-4" />
@@ -283,6 +285,23 @@ export default function CustomersPage() {
                     </ScrollTable>
                 </CardContent>
             </Card>
+            <DetailDialog
+                open={!!rowDetail}
+                onOpenChange={(v) => !v && setRowDetail(null)}
+                testId="customer-detail-dialog"
+                title={rowDetail && (rowDetail.name)}
+                subtitle={rowDetail && (`Cliente dal ${formatDate(rowDetail.created_at)}`)}
+                rows={rowDetail ? [
+                    { label: "Telefono", value: rowDetail.phone },
+                    { label: "Email", value: rowDetail.email },
+                    { label: "Indirizzo", value: rowDetail.address },
+                    { label: "Note", value: rowDetail.notes },
+                ] : []}
+            >
+                <div className="flex gap-2 justify-end">
+                    <Button variant="outline" onClick={() => { edit(rowDetail); setRowDetail(null); }} data-testid="customer-detail-edit">Modifica</Button>
+                </div>
+            </DetailDialog>
         </div>
     );
 }

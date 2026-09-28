@@ -42,6 +42,7 @@ import { DeviceBrandModelFields } from "@/components/DeviceBrandModelFields";
 import { SerialHistoryAlert } from "@/components/SerialHistoryAlert";
 import { RepairServicesField } from "@/components/RepairServicesField";
 import { SearchSelect } from "@/components/SearchSelect";
+import { DetailDialog } from "@/components/DetailDialog";
 import { useColumnWidths, ResizableTh, ScrollTable, useTableSort, useSelection, SelectAllCheckbox, RowCheckbox, BulkBar, bulkDelete } from "@/components/ResizableTable";
 
 const COLS = ["Ticket", "Cliente", "Dispositivo", "Problema", "Stato", "Prezzo", "Entrata / Uscita", "Azioni"];
@@ -95,6 +96,7 @@ export default function RepairsPage() {
     const filtered = items;
     const { sorted, sort, toggle: toggleSort } = useTableSort(filtered, ACCESSORS);
     const sel = useSelection(sorted);
+    const [rowDetail, setRowDetail] = useState(null);
     const [bulkBusy, setBulkBusy] = useState(false);
     const removeSelected = async () => {
         if (!window.confirm(`Eliminare ${sel.selected.size} riparazioni?`)) return;
@@ -163,8 +165,11 @@ export default function RepairsPage() {
 
     const remove = async (id) => {
         if (!window.confirm("Eliminare questa riparazione?")) return;
+        const r = items.find((x) => x.id === id);
+        const hasParts = (r?.parts_used || []).some((p) => p.part_id);
+        const restore = hasParts ? window.confirm("Ripristinare in magazzino i ricambi utilizzati in questa riparazione?") : false;
         try {
-            await api.delete(`/repairs/${id}`);
+            await api.delete(`/repairs/${id}`, { params: { restore_parts: restore } });
             toast.success("Eliminata");
             load();
         } catch (e) {
@@ -177,7 +182,7 @@ export default function RepairsPage() {
             ...form,
             parts_used: [
                 ...form.parts_used,
-                { part_id: "", part_name: "", quantity: 1, unit_price: 0 },
+                { part_id: "", part_name: "", quantity: 1, unit_price: 0, surcharge: 0 },
             ],
         });
     };
@@ -366,7 +371,7 @@ export default function RepairsPage() {
                             <RepairServicesField
                                 services={form.services || []}
                                 deviceType={form.device_type}
-                                partsTotal={form.parts_used.reduce((t, p) => t + Number(p.quantity || 0) * Number(p.unit_price || 0), 0)}
+                                partsTotal={form.parts_used.reduce((t, p) => t + Number(p.quantity || 0) * Number(p.unit_price || 0) + Number(p.surcharge || 0), 0)}
                                 onChange={(services) => setForm({ ...form, services })}
                                 onUseAsEstimate={(v) => setForm({ ...form, estimate: v, final_price: Number(form.final_price) > 0 ? form.final_price : v })}
                             />
@@ -386,6 +391,14 @@ export default function RepairsPage() {
                                     </Button>
                                 </div>
                                 <div className="space-y-2">
+                                    {form.parts_used.length > 0 && (
+                                        <div className="grid grid-cols-12 gap-2 eyebrow px-1">
+                                            <span className="col-span-6">Ricambio (solo disponibili)</span>
+                                            <span className="col-span-2">Q.tà</span>
+                                            <span className="col-span-2">Prezzo</span>
+                                            <span className="col-span-1">Sovr.</span>
+                                        </div>
+                                    )}
                                     {form.parts_used.map((pu, i) => (
                                         <div
                                             key={i}
@@ -395,16 +408,18 @@ export default function RepairsPage() {
                                                 <SearchSelect
                                                     testId={`repair-part-select-${i}`}
                                                     value={pu.part_id || ""}
-                                                    placeholder="Seleziona ricambio"
+                                                    placeholder="Seleziona ricambio disponibile"
                                                     searchPlaceholder="Cerca ricambio…"
+                                                    emptyLabel="Nessun ricambio disponibile in magazzino."
                                                     sorted={false}
                                                     options={(() => {
-                                                        const compat = parts.filter((p) => isCompatible(p, form.device_brand, form.device_model));
+                                                        const usable = parts.filter((p) => Number(p.quantity) > 0 || p.id === pu.part_id);
+                                                        const compat = usable.filter((p) => isCompatible(p, form.device_brand, form.device_model));
                                                         const byName = (a, b) => a.name.localeCompare(b.name, "it", { numeric: true });
                                                         const lbl = (p) => `${p.name}${p.brand ? ` (${p.brand})` : ""} · ${p.quantity} in stock`;
                                                         return [
                                                             ...[...compat].sort(byName).map((p) => ({ value: p.id, label: `✓ ${lbl(p)}`, group: `Compatibili con ${form.device_brand} ${form.device_model || ""}`.trim(), keywords: (p.compatible_models || []).join(" ") })),
-                                                            ...parts.filter((p) => !compat.includes(p)).sort(byName).map((p) => ({ value: p.id, label: lbl(p), group: compat.length ? "Altri ricambi" : "", keywords: p.brand || "" })),
+                                                            ...usable.filter((p) => !compat.includes(p)).sort(byName).map((p) => ({ value: p.id, label: lbl(p), group: compat.length ? "Altri ricambi" : "", keywords: p.brand || "" })),
                                                         ];
                                                     })()}
                                                     onChange={(v) => {
@@ -429,13 +444,29 @@ export default function RepairsPage() {
                                                 }
                                             />
                                             <Input
-                                                className="col-span-3"
+                                                className="col-span-2"
                                                 type="number"
                                                 step="0.01"
+                                                title="Prezzo unitario"
                                                 value={pu.unit_price}
+                                                data-testid={`repair-part-price-${i}`}
                                                 onChange={(e) =>
                                                     updatePart(i, {
                                                         unit_price: Number(e.target.value),
+                                                    })
+                                                }
+                                            />
+                                            <Input
+                                                className="col-span-1"
+                                                type="number"
+                                                step="0.01"
+                                                title="Sovrapprezzo"
+                                                placeholder="+€"
+                                                value={pu.surcharge ?? 0}
+                                                data-testid={`repair-part-surcharge-${i}`}
+                                                onChange={(e) =>
+                                                    updatePart(i, {
+                                                        surcharge: Number(e.target.value),
                                                     })
                                                 }
                                             />
@@ -545,7 +576,7 @@ export default function RepairsPage() {
                             {sorted.map((r, idx) => (
                                 <tr
                                     key={r.id}
-                                    className={`border-b border-border/50 hover:bg-white/5 ${idx % 2 ? "bg-white/[0.02]" : ""}`}
+                                    onClick={() => setRowDetail(r)} data-testid={`repair-row-${r.id}`} className={`border-b border-border/50 hover:bg-white/5 cursor-pointer ${idx % 2 ? "bg-white/[0.02]" : ""}`}
                                 >
                                     <RowCheckbox checked={sel.selected.has(r.id)} onChange={() => sel.toggle(r.id)} testId={`repairs-select-${r.id}`} />
                                     <td className="px-4 py-3 font-mono text-primary font-semibold">
@@ -616,6 +647,32 @@ export default function RepairsPage() {
                     </ScrollTable>
                 </CardContent>
             </Card>
+            <DetailDialog
+                open={!!rowDetail}
+                onOpenChange={(v) => !v && setRowDetail(null)}
+                testId="repair-detail-dialog"
+                title={rowDetail?.ticket_number}
+                subtitle={rowDetail && REPAIR_STATUS[rowDetail.status]?.label}
+                rows={rowDetail ? [
+                    { label: "Cliente", value: rowDetail.customer_name || "walk-in" },
+                    { label: "Dispositivo", value: `${rowDetail.device_type} · ${rowDetail.device_brand || ""} ${rowDetail.device_model || ""}` },
+                    { label: "Seriale / IMEI", value: rowDetail.serial_or_imei },
+                    { label: "Problema", value: rowDetail.problem },
+                    { label: "Diagnosi", value: rowDetail.diagnosis },
+                    { label: "Interventi", value: rowDetail.services?.map((x) => `${x.name} (${currency(x.price)})`).join(", ") },
+                    { label: "Ricambi", value: rowDetail.parts_used?.filter((p) => p.part_id).map((p) => `${p.part_name} ×${p.quantity} ${currency(p.quantity * p.unit_price + (p.surcharge || 0))}`).join(", ") },
+                    { label: "Preventivo", value: currency(rowDetail.estimate) },
+                    { label: "Prezzo finale", value: currency(rowDetail.final_price) },
+                    { label: "Pagata", value: rowDetail.paid ? "Sì" : "No" },
+                    { label: "Entrata", value: formatDate(rowDetail.received_at || rowDetail.created_at) },
+                    { label: "Consegna", value: rowDetail.delivered_at ? formatDate(rowDetail.delivered_at) : "—" },
+                    { label: "Note tecniche", value: rowDetail.technical_notes },
+                ] : []}
+            >
+                <div className="flex gap-2 justify-end">
+                    <Button variant="outline" onClick={() => { edit(rowDetail); setRowDetail(null); }} data-testid="repair-detail-edit">Modifica</Button>
+                </div>
+            </DetailDialog>
         </div>
     );
 }

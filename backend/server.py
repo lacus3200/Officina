@@ -169,6 +169,11 @@ class RepairPartUsed(BaseModel):
     part_name: str
     quantity: int = 1
     unit_price: float = 0.0
+    surcharge: float = 0.0
+
+
+def parts_used_total(parts_used: list) -> float:
+    return round(sum(int(p.get("quantity", 1)) * float(p.get("unit_price") or 0) + float(p.get("surcharge") or 0) for p in parts_used or []), 2)
 
 
 class RepairService(BaseModel):
@@ -851,6 +856,16 @@ async def list_repairs(user: dict = Depends(get_current_user), status: Optional[
     return [clean(i) for i in items]
 
 
+async def sync_refurb_sale_cost(repair_id: str):
+    ref = await db.refurbished.find_one({"repair_id": repair_id, "status": "venduto"})
+    if ref and ref.get("sale_id"):
+        enriched = await enrich_refurb(ref)
+        await db.sales.update_one(
+            {"id": ref["sale_id"]},
+            {"$set": {"cost_total": enriched["total_cost"], "margin": round(float(ref["sale_price"]) - enriched["total_cost"], 2)}},
+        )
+
+
 def parts_qty_map(parts_used: list) -> dict:
     out: dict = {}
     for p in parts_used or []:
@@ -906,6 +921,11 @@ async def update_repair(repair_id: str, body: RepairUpdate, user: dict = Depends
         await apply_parts_stock_delta(updated.get("parts_used", []), [])
     if updated.get("delivered_at") and updated.get("delivered_at") != existing.get("delivered_at"):
         await db.cash_movements.update_many({"reference_id": repair_id, "category": "riparazione"}, {"$set": {"date": updated["delivered_at"]}})
+    if "final_price" in data and float(updated.get("final_price") or 0) != float(existing.get("final_price") or 0):
+        await db.cash_movements.update_many({"reference_id": repair_id, "category": "riparazione"}, {"$set": {"amount": float(updated["final_price"])}})
+    if updated.get("status") == "consegnata" and not updated.get("paid"):
+        await db.cash_movements.delete_many({"reference_id": repair_id, "category": "riparazione"})
+    await sync_refurb_sale_cost(repair_id)
     if any(k in data for k in ("device_brand", "device_model")):
         await db.cash_movements.update_many({"reference_id": repair_id, "category": "riparazione"}, {"$set": {"description": repair_cash_description(updated)}})
 
@@ -926,9 +946,9 @@ async def update_repair(repair_id: str, body: RepairUpdate, user: dict = Depends
 
 
 @api.delete("/repairs/{repair_id}")
-async def delete_repair(repair_id: str, user: dict = Depends(get_current_user)):
+async def delete_repair(repair_id: str, restore_parts: bool = True, user: dict = Depends(get_current_user)):
     existing = await db.repairs.find_one({"id": repair_id})
-    if existing and existing.get("status") != "annullata":
+    if existing and restore_parts and existing.get("status") != "annullata":
         await apply_parts_stock_delta(existing.get("parts_used", []), [])
     await db.repairs.delete_one({"id": repair_id})
     await db.cash_movements.delete_many({"reference_id": repair_id})
@@ -1270,10 +1290,7 @@ async def enrich_refurb(doc: dict) -> dict:
     if doc.get("repair_id"):
         repair = clean(await db.repairs.find_one({"id": doc["repair_id"]}))
         if repair:
-            for pu in repair.get("parts_used", []):
-                part = await db.parts.find_one({"id": pu["part_id"]})
-                unit = part["cost_price"] if part else pu.get("unit_price", 0)
-                parts_cost += unit * pu.get("quantity", 1)
+            parts_cost = parts_used_total(repair.get("parts_used", []))
     total_cost = round(doc.get("purchase_cost", 0) + extra_costs + parts_cost, 2)
     doc["parts_cost"] = round(parts_cost, 2)
     doc["extra_costs"] = round(extra_costs, 2)
@@ -1281,7 +1298,8 @@ async def enrich_refurb(doc: dict) -> dict:
     doc["margin"] = round(doc["sale_price"] - total_cost, 2) if doc.get("status") == "venduto" else None
     doc["expected_margin"] = round(doc.get("target_price", 0) - total_cost, 2)
     doc["repair"] = (
-        {"ticket_number": repair["ticket_number"], "status": repair["status"], "problem": repair["problem"]}
+        {"ticket_number": repair["ticket_number"], "status": repair["status"], "problem": repair["problem"],
+         "parts_used": repair.get("parts_used", []), "id": repair["id"]}
         if repair else None
     )
     return doc
@@ -1473,11 +1491,21 @@ async def open_repair_from_refurb(ref_id: str, body: OpenRepairIn, user: dict = 
 
 
 @api.delete("/refurbished/{ref_id}")
-async def delete_refurbished(ref_id: str, user: dict = Depends(get_current_user)):
+async def delete_refurbished(ref_id: str, delete_sale: bool = False, restore_parts: bool = False, user: dict = Depends(get_current_user)):
     existing = await db.refurbished.find_one({"id": ref_id})
     if existing:
         ids = [ref_id] + [c["id"] for c in existing.get("refurb_costs", [])]
         await db.cash_movements.delete_many({"reference_id": {"$in": ids}})
+        if existing.get("sale_id") and delete_sale:
+            await db.sales.delete_one({"id": existing["sale_id"]})
+            await db.cash_movements.delete_many({"reference_id": existing["sale_id"]})
+        if existing.get("repair_id"):
+            rep = await db.repairs.find_one({"id": existing["repair_id"]})
+            if rep:
+                if restore_parts and rep.get("status") != "annullata":
+                    await apply_parts_stock_delta(rep.get("parts_used", []), [])
+                await db.repairs.delete_one({"id": rep["id"]})
+                await db.cash_movements.delete_many({"reference_id": rep["id"]})
     await db.refurbished.delete_one({"id": ref_id})
     return {"ok": True}
 

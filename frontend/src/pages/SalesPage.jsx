@@ -25,6 +25,7 @@ import { currency, formatDateTime } from "@/lib/format";
 import { printSaleInvoice } from "@/lib/pdf";
 import { CustomerSelect } from "@/components/CustomerSelect";
 import { SearchSelect } from "@/components/SearchSelect";
+import { DetailDialog } from "@/components/DetailDialog";
 import { useColumnWidths, ResizableTh, ScrollTable, useTableSort, useSelection, SelectAllCheckbox, RowCheckbox, BulkBar, bulkDelete } from "@/components/ResizableTable";
 
 const COLS = ["Fattura", "Cliente", "Articoli", "Pagamento", "Totale", "Margine", "Data", "Azioni"];
@@ -49,6 +50,7 @@ export default function SalesPage() {
     const { sorted, sort, toggle: toggleSort } = useTableSort(filtered, ACCESSORS);
     const sel = useSelection(sorted);
     const [bulkBusy, setBulkBusy] = useState(false);
+    const [rowDetail, setRowDetail] = useState(null);
     const removeSelected = async () => {
         if (!window.confirm(`Eliminare ${sel.selected.size} vendite?`)) return;
         setBulkBusy(true);
@@ -364,7 +366,7 @@ export default function SalesPage() {
                             {sorted.map((s, idx) => (
                                 <tr
                                     key={s.id}
-                                    className={`border-b border-border/50 hover:bg-white/5 ${idx % 2 ? "bg-white/[0.02]" : ""}`}
+                                    onClick={() => setRowDetail(s)} data-testid={`sale-row-${s.id}`} className={`border-b border-border/50 hover:bg-white/5 cursor-pointer ${idx % 2 ? "bg-white/[0.02]" : ""}`}
                                 >
                                     <RowCheckbox checked={sel.selected.has(s.id)} onChange={() => sel.toggle(s.id)} testId={`sales-select-${s.id}`} />
                                     <td className="px-4 py-3 font-mono text-primary font-semibold">
@@ -389,13 +391,13 @@ export default function SalesPage() {
                                         <button
                                             className="hover:text-primary underline-offset-2 hover:underline text-left"
                                             title="Modifica data vendita"
-                                            onClick={() => setDateEdit({ id: s.id, date: s.created_at.slice(0, 10) })}
+                                            onClick={(e) => { e.stopPropagation(); setDateEdit({ id: s.id, date: s.created_at.slice(0, 10) }); }}
                                             data-testid={`sale-date-${s.id}`}
                                         >
                                             {formatDateTime(s.created_at)}
                                         </button>
                                     </td>
-                                    <td className="px-4 py-3">
+                                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                                         <div className="flex gap-1 justify-end">
                                             <Button
                                                 variant="ghost"
@@ -429,6 +431,22 @@ export default function SalesPage() {
                     <Button onClick={saveDate} disabled={!dateEdit?.date} data-testid="sale-date-save">Salva</Button>
                 </DialogContent>
             </Dialog>
+            <DetailDialog
+                open={!!rowDetail}
+                onOpenChange={(v) => !v && setRowDetail(null)}
+                testId="sale-detail-dialog"
+                title={rowDetail && (rowDetail.invoice_number)}
+                subtitle={rowDetail && (formatDateTime(rowDetail.created_at))}
+                rows={rowDetail ? [
+                    { label: "Cliente", value: rowDetail.customer_name || "walk-in" },
+                    { label: "Pagamento", value: rowDetail.payment_method },
+                    ...rowDetail.items.map((it, i) => ({ label: `${it.description} ×${it.quantity}`, value: currency(it.unit_price * it.quantity) })),
+                    { label: "Totale", value: <b>{currency(rowDetail.total)}</b> },
+                    { label: "Costo", value: currency(rowDetail.cost_total) },
+                    { label: "Margine", value: <span className="text-emerald-400">{currency(rowDetail.margin)}</span> },
+                    { label: "Note", value: rowDetail.notes },
+                ] : []}
+            ></DetailDialog>
         </div>
     );
 }

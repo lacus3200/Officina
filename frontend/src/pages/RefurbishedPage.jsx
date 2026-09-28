@@ -53,8 +53,11 @@ export default function RefurbishedPage() {
 
     const remove = async (id) => {
         if (!window.confirm("Eliminare il dispositivo e i relativi movimenti di cassa?")) return;
+        const it = items.find((x) => x.id === id);
+        const deleteSale = it?.sale_id ? window.confirm("Il dispositivo è stato venduto: eliminare anche la vendita collegata (e il relativo incasso)?") : false;
+        const restore = it?.repair?.parts_used?.some((p) => p.part_id) ? window.confirm("La riparazione collegata ha usato ricambi: ripristinarli in magazzino?") : false;
         try {
-            await api.delete(`/refurbished/${id}`);
+            await api.delete(`/refurbished/${id}`, { params: { delete_sale: deleteSale, restore_parts: restore } });
             toast.success("Dispositivo eliminato");
             load();
         } catch (e) {

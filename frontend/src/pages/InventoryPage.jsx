@@ -26,6 +26,7 @@ import { printPartLabel } from "@/lib/pdf";
 import { PartNameSelect, CompatibleModelsField, PartCategorySelect, PartBrandSelect } from "@/components/PartCatalogFields";
 import { PartCatalogManager } from "@/components/PartCatalogManager";
 import { useColumnWidths, ResizableTh, ScrollTable, useTableSort, useSelection, SelectAllCheckbox, RowCheckbox, BulkBar, bulkDelete } from "@/components/ResizableTable";
+import { DetailDialog } from "@/components/DetailDialog";
 import { Settings2 } from "lucide-react";
 
 const COLS = ["Nome", "Marca", "Categoria", "Condizione", "Stato", "Q.tà", "Costo", "Prezzo", "Posizione", "Entrata / Uscita", "Azioni"];
@@ -68,6 +69,7 @@ export default function InventoryPage() {
     const { sorted, sort, toggle: toggleSort } = useTableSort(filtered, ACCESSORS);
     const sel = useSelection(sorted);
     const [bulkBusy, setBulkBusy] = useState(false);
+    const [rowDetail, setRowDetail] = useState(null);
     const removeSelected = async () => {
         if (!window.confirm(`Eliminare ${sel.selected.size} ricambi?`)) return;
         setBulkBusy(true);
@@ -391,7 +393,7 @@ export default function InventoryPage() {
                                 return (
                                     <tr
                                         key={p.id}
-                                        className={`border-b border-border/50 hover:bg-white/5 ${idx % 2 ? "bg-white/[0.02]" : ""}`}
+                                        onClick={() => setRowDetail(p)} data-testid={`part-row-${p.id}`} className={`border-b border-border/50 hover:bg-white/5 cursor-pointer ${idx % 2 ? "bg-white/[0.02]" : ""}`}
                                     >
                                     <RowCheckbox checked={sel.selected.has(p.id)} onChange={() => sel.toggle(p.id)} testId={`inventory-select-${p.id}`} />
                                         <td className="px-4 py-3">
@@ -449,7 +451,7 @@ export default function InventoryPage() {
                                             <div>↓ {formatDate(p.entered_at || p.created_at)}</div>
                                             {p.exited_at && <div className="text-sky-400">↑ {formatDate(p.exited_at)}</div>}
                                         </td>
-                                        <td className="px-4 py-3">
+                                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                                             <div className="flex gap-1 justify-end">
                                                 <Button
                                                     variant="ghost"
@@ -486,6 +488,32 @@ export default function InventoryPage() {
                     </ScrollTable>
                 </CardContent>
             </Card>
+            <DetailDialog
+                open={!!rowDetail}
+                onOpenChange={(v) => !v && setRowDetail(null)}
+                testId="part-detail-dialog"
+                title={rowDetail && (rowDetail.name)}
+                subtitle={rowDetail && (rowDetail.sku)}
+                rows={rowDetail ? [
+                    { label: "Marca", value: rowDetail.brand },
+                    { label: "Categoria", value: rowDetail.category },
+                    { label: "Condizione", value: PART_CONDITION[rowDetail.condition]?.label },
+                    { label: "Stato", value: PART_STATUS[rowDetail.status]?.label },
+                    { label: "Giacenza", value: `${rowDetail.quantity} pz (min ${rowDetail.min_quantity})` },
+                    { label: "Costo unitario", value: currency(rowDetail.cost_price) },
+                    { label: "Prezzo vendita", value: currency(rowDetail.sell_price) },
+                    { label: "Valore giacenza", value: currency(rowDetail.quantity * rowDetail.cost_price) },
+                    { label: "Posizione", value: rowDetail.location },
+                    { label: "Compatibile con", value: rowDetail.compatible_models?.join(", ") },
+                    { label: "Entrata", value: formatDate(rowDetail.entered_at || rowDetail.created_at) },
+                    { label: "Uscita", value: rowDetail.exited_at ? formatDate(rowDetail.exited_at) : undefined },
+                    { label: "Note", value: rowDetail.notes },
+                ] : []}
+            >
+                <div className="flex gap-2 justify-end">
+                    <Button variant="outline" onClick={() => { edit(rowDetail); setRowDetail(null); }} data-testid="part-detail-edit">Modifica</Button>
+                </div>
+            </DetailDialog>
         </div>
     );
 }
