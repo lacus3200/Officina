@@ -1,24 +1,5 @@
 """Backend tests for iter6: Part catalog, guess-category, compatible_models."""
-import os
-import pytest
-import requests
-
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
-if not BASE_URL:
-    # fallback to reading frontend .env
-    with open("/app/frontend/.env") as f:
-        for line in f:
-            if line.startswith("REACT_APP_BACKEND_URL"):
-                BASE_URL = line.split("=", 1)[1].strip().rstrip("/")
-
-
-@pytest.fixture(scope="module")
-def client():
-    s = requests.Session()
-    r = s.post(f"{BASE_URL}/api/auth/login",
-               json={"email": "admin@lab.local", "password": "admin123"})
-    assert r.status_code == 200, r.text
-    return s
+from conftest import BASE_URL
 
 
 def test_catalog_parts_seed(client):

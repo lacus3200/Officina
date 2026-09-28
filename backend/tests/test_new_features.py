@@ -1,22 +1,6 @@
 """Regression tests for new features: Suppliers, PurchaseOrders, Refurbished."""
-import os
 import pytest
-import requests
-
-BASE_URL = (os.environ.get("REACT_APP_BACKEND_URL") or "https://tech-workshop-13.preview.emergentagent.com").rstrip("/")
-API = f"{BASE_URL}/api"
-
-ADMIN_EMAIL = "admin@lab.local"
-ADMIN_PASSWORD = "admin123"
-
-
-@pytest.fixture(scope="session")
-def client():
-    s = requests.Session()
-    r = s.post(f"{API}/auth/login", json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD})
-    assert r.status_code == 200, r.text
-    s.headers.update({"Authorization": f"Bearer {r.json()['token']}", "Content-Type": "application/json"})
-    return s
+from conftest import API
 
 
 # ---------- Suppliers CRUD ----------
@@ -43,62 +27,53 @@ class TestSuppliers:
 
 
 # ---------- Purchase orders full flow ----------
+@pytest.fixture
+def order_ctx(client, temp_part):
+    sup = client.post(f"{API}/suppliers", json={"name": "TEST_Fornitore ORD"}).json()
+    part = temp_part(name="TEST_PartOrd", quantity=5, cost_price=2.0, sell_price=5.0)
+    o = client.post(f"{API}/purchase-orders", json={
+        "supplier_id": sup["id"], "supplier_name": sup["name"],
+        "items": [
+            {"part_id": part["id"], "description": "TEST_PartOrd", "quantity": 10, "unit_cost": 2.0},
+            {"description": "TEST_freeItem", "quantity": 2, "unit_cost": 3.0},
+        ],
+        "status": "ordinato",
+    }).json()
+    yield {"supplier": sup, "part": part, "order": o}
+    client.delete(f"{API}/purchase-orders/{o['id']}")
+    client.delete(f"{API}/suppliers/{sup['id']}")
+
+
+def receive(client, oid, lines):
+    r = client.post(f"{API}/purchase-orders/{oid}/receive", json={"items": lines})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
 class TestPurchaseOrders:
-    def test_order_lifecycle_stock_and_cash(self, client):
-        # supplier
-        sup = client.post(f"{API}/suppliers", json={"name": "TEST_Fornitore ORD"}).json()
-        # part with initial qty
-        part = client.post(f"{API}/parts", json={
-            "name": "TEST_PartOrd", "quantity": 5, "min_quantity": 0,
-            "cost_price": 2.0, "sell_price": 5.0,
-        }).json()
-        pid = part["id"]
-
-        order = client.post(f"{API}/purchase-orders", json={
-            "supplier_id": sup["id"], "supplier_name": sup["name"],
-            "items": [
-                {"part_id": pid, "description": "TEST_PartOrd", "quantity": 10, "unit_cost": 2.0},
-                {"description": "TEST_freeItem", "quantity": 2, "unit_cost": 3.0},
-            ],
-            "status": "ordinato",
-        })
-        assert order.status_code == 200, order.text
-        o = order.json()
+    def test_order_created_with_total(self, order_ctx):
+        o = order_ctx["order"]
         assert o["order_number"].startswith("ORD-")
-        assert o["total"] == 26.0  # 10*2 + 2*3
+        assert o["total"] == 26.0
         assert o["status"] == "ordinato"
-        oid = o["id"]
 
-        # Partial receive 4 of first item
-        rec1 = client.post(f"{API}/purchase-orders/{oid}/receive",
-                           json={"items": [{"index": 0, "quantity": 4}]})
-        assert rec1.status_code == 200, rec1.text
-        assert rec1.json()["status"] == "parziale"
+    def test_partial_receive_sets_parziale_and_stock(self, client, order_ctx):
+        o = receive(client, order_ctx["order"]["id"], [{"index": 0, "quantity": 4}])
+        assert o["status"] == "parziale"
+        assert client.get(f"{API}/parts/{order_ctx['part']['id']}").json()["quantity"] == 9
 
-        # Part stock incremented by 4 -> 9
-        p_after = client.get(f"{API}/parts/{pid}").json()
-        assert p_after["quantity"] == 9
-
-        # Cash entry created (uscita acquisto = 4*2 = 8)
-        cash = client.get(f"{API}/cash").json()
-        matches = [m for m in cash if m.get("reference_id") == oid and m["type"] == "uscita"]
-        assert len(matches) >= 1
+    def test_partial_receive_records_cash(self, client, order_ctx):
+        oid = order_ctx["order"]["id"]
+        receive(client, oid, [{"index": 0, "quantity": 4}])
+        matches = [m for m in client.get(f"{API}/cash").json() if m.get("reference_id") == oid and m["type"] == "uscita"]
         assert any(abs(m["amount"] - 8.0) < 0.01 for m in matches)
 
-        # Receive remaining
-        rec2 = client.post(f"{API}/purchase-orders/{oid}/receive",
-                           json={"items": [{"index": 0, "quantity": 6}, {"index": 1, "quantity": 2}]})
-        assert rec2.status_code == 200
-        assert rec2.json()["status"] == "ricevuto"
-        assert rec2.json().get("received_at")
-
-        p_final = client.get(f"{API}/parts/{pid}").json()
-        assert p_final["quantity"] == 15  # 5 + 10
-
-        # cleanup
-        client.delete(f"{API}/purchase-orders/{oid}")
-        client.delete(f"{API}/parts/{pid}")
-        client.delete(f"{API}/suppliers/{sup['id']}")
+    def test_full_receive_sets_ricevuto(self, client, order_ctx):
+        oid = order_ctx["order"]["id"]
+        o = receive(client, oid, [{"index": 0, "quantity": 10}, {"index": 1, "quantity": 2}])
+        assert o["status"] == "ricevuto"
+        assert o.get("received_at")
+        assert client.get(f"{API}/parts/{order_ctx['part']['id']}").json()["quantity"] == 15
 
     def test_receive_annullato_400(self, client):
         o = client.post(f"{API}/purchase-orders", json={
@@ -115,66 +90,72 @@ class TestPurchaseOrders:
 
 
 # ---------- Refurbished full flow ----------
+@pytest.fixture
+def refurb(client):
+    r = client.post(f"{API}/refurbished", json={
+        "device_type": "smartphone", "brand": "TEST_Apple", "model": "iPhoneT",
+        "purchase_cost": 100.0, "target_price": 200.0,
+    })
+    assert r.status_code == 200, r.text
+    dev = r.json()
+    yield dev
+    fresh = client.get(f"{API}/refurbished/{dev['id']}").json()
+    if fresh.get("sale_id"):
+        client.delete(f"{API}/sales/{fresh['sale_id']}")
+    client.delete(f"{API}/refurbished/{dev['id']}")
+
+
+def add_cost(client, rid, amount=20.0):
+    c = client.post(f"{API}/refurbished/{rid}/costs", json={"description": "TEST_batteria", "amount": amount})
+    assert c.status_code == 200, c.text
+    return c.json()
+
+
+def sell(client, rid, price=250.0):
+    r = client.post(f"{API}/refurbished/{rid}/sell", json={"sale_price": price, "customer_name": "TEST_Cliente Ref"})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
 class TestRefurbished:
-    def test_create_costs_sell_flow(self, client):
-        # create
-        r = client.post(f"{API}/refurbished", json={
-            "device_type": "smartphone", "brand": "TEST_Apple", "model": "iPhoneT",
-            "purchase_cost": 100.0, "target_price": 200.0,
-        })
-        assert r.status_code == 200, r.text
-        dev = r.json()
-        assert dev["code"].startswith("RIC-")
-        assert dev["total_cost"] == 100.0
-        assert dev["status"] == "acquistato"
-        rid = dev["id"]
+    def test_create_defaults(self, refurb):
+        assert refurb["code"].startswith("RIC-")
+        assert refurb["total_cost"] == 100.0
+        assert refurb["status"] == "acquistato"
 
-        # cash uscita acquisto exists
+    def test_create_records_purchase_cash(self, client, refurb):
         cash = client.get(f"{API}/cash").json()
-        assert any(m.get("reference_id") == rid and m["type"] == "uscita" and m["amount"] == 100.0 for m in cash)
+        assert any(m.get("reference_id") == refurb["id"] and m["type"] == "uscita" and m["amount"] == 100.0 for m in cash)
 
-        # add refurb cost
-        c = client.post(f"{API}/refurbished/{rid}/costs", json={"description": "TEST_batteria", "amount": 20.0})
-        assert c.status_code == 200
-        cd = c.json()
+    def test_add_cost_increases_total(self, client, refurb):
+        cd = add_cost(client, refurb["id"])
         assert cd["total_cost"] == 120.0
         assert len(cd["refurb_costs"]) == 1
-        cost_id = cd["refurb_costs"][0]["id"]
 
-        # summary in_stock >=1 and stock_value includes 120
+    def test_summary_includes_stock(self, client, refurb):
+        add_cost(client, refurb["id"])
         summ = client.get(f"{API}/refurbished/summary").json()
         assert summ["in_stock"] >= 1
         assert summ["stock_value"] >= 120.0
 
-        # sell
-        sell = client.post(f"{API}/refurbished/{rid}/sell", json={
-            "sale_price": 250.0, "customer_name": "TEST_Cliente Ref",
-        })
-        assert sell.status_code == 200, sell.text
-        sd = sell.json()
+    def test_sell_sets_margin_and_sale(self, client, refurb):
+        add_cost(client, refurb["id"])
+        sd = sell(client, refurb["id"])
         assert sd["status"] == "venduto"
-        assert sd["margin"] == round(250.0 - 120.0, 2)
-        assert sd.get("sale_id")
-
-        # sale record exists
+        assert sd["margin"] == 130.0
         sale = client.get(f"{API}/sales/{sd['sale_id']}").json()
         assert sale["invoice_number"].startswith("VEN-")
         assert sale["total"] == 250.0
 
-        # cash entrata vendita exists
-        cash2 = client.get(f"{API}/cash").json()
-        assert any(m.get("reference_id") == sd["sale_id"] and m["type"] == "entrata" and m["amount"] == 250.0 for m in cash2)
+    def test_sell_records_cash_entry(self, client, refurb):
+        sd = sell(client, refurb["id"])
+        cash = client.get(f"{API}/cash").json()
+        assert any(m.get("reference_id") == sd["sale_id"] and m["type"] == "entrata" and m["amount"] == 250.0 for m in cash)
 
-        # sell twice -> 400
-        again = client.post(f"{API}/refurbished/{rid}/sell", json={"sale_price": 300.0})
+    def test_sell_twice_400(self, client, refurb):
+        sell(client, refurb["id"])
+        again = client.post(f"{API}/refurbished/{refurb['id']}/sell", json={"sale_price": 300.0})
         assert again.status_code == 400
-
-        # delete cost after sell (cleanup path)
-        client.delete(f"{API}/refurbished/{rid}/costs/{cost_id}")
-
-        # cleanup
-        client.delete(f"{API}/sales/{sd['sale_id']}")
-        client.delete(f"{API}/refurbished/{rid}")
 
     def test_get_404(self, client):
         r = client.get(f"{API}/refurbished/nope")

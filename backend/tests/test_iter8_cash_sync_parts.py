@@ -1,27 +1,6 @@
-"""Iteration 8: cash <-> sales/repairs sync, part purchase movements, cash reference."""
-import os
-import requests
 import pytest
-
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
-if not BASE_URL:
-    # Fallback to frontend .env parsing
-    from pathlib import Path
-    env = Path("/app/frontend/.env").read_text()
-    for line in env.splitlines():
-        if line.startswith("REACT_APP_BACKEND_URL="):
-            BASE_URL = line.split("=", 1)[1].strip().rstrip("/")
-            break
-
-API = f"{BASE_URL}/api"
-
-
-@pytest.fixture(scope="module")
-def client():
-    s = requests.Session()
-    r = s.post(f"{API}/auth/login", json={"email": "admin@lab.local", "password": "admin123"})
-    assert r.status_code == 200, r.text
-    return s
+"""Iteration 8: cash <-> sales/repairs sync, part purchase movements, cash reference."""
+from conftest import API
 
 
 # ---------- Cash sync endpoint ----------
@@ -78,48 +57,40 @@ def test_manual_cash_deletable(client):
 
 
 # ---------- Part creation triggers acquisto_ricambi movement ----------
-def test_part_create_and_update_generates_cash(client):
-    r = client.post(f"{API}/parts", json={
-        "name": "TEST_iter8_ricambio",
-        "cost_price": 10.0,
-        "quantity": 4,
-    })
-    assert r.status_code == 200
-    part = r.json()
-    part_id = part["id"]
+from conftest import cash_for  # noqa: E402
 
-    cash = client.get(f"{API}/cash").json()
-    movs = [m for m in cash if m.get("reference_id") == part_id and m.get("category") == "acquisto_ricambi"]
+
+@pytest.fixture
+def cash_part(temp_part):
+    return temp_part(name="TEST_iter8_ricambio", cost_price=10.0, quantity=4)
+
+
+def set_qty(client, part, qty):
+    r = client.put(f"{API}/parts/{part['id']}", json={"name": part["name"], "cost_price": 10.0, "quantity": qty})
+    assert r.status_code == 200, r.text
+
+
+def test_part_create_generates_cash(client, cash_part):
+    movs = cash_for(client, cash_part["id"], "acquisto_ricambi")
     assert len(movs) == 1
-    assert abs(movs[0]["amount"] - 40.0) < 0.01
     assert movs[0]["type"] == "uscita"
+    assert abs(movs[0]["amount"] - 40.0) < 0.01
 
-    # Increase quantity 4 -> 6 => new movement for delta 2 * 10 = 20
-    up = client.put(f"{API}/parts/{part_id}", json={
-        "name": part["name"], "cost_price": 10.0, "quantity": 6,
-    })
-    assert up.status_code == 200
-    cash2 = client.get(f"{API}/cash").json()
-    movs2 = [m for m in cash2 if m.get("reference_id") == part_id and m.get("category") == "acquisto_ricambi"]
-    assert len(movs2) == 2
-    amounts = sorted(m["amount"] for m in movs2)
-    assert amounts == [20.0, 40.0], f"unexpected amounts: {amounts}"
 
-    # Decrease quantity 6 -> 3: no new movement
-    dn = client.put(f"{API}/parts/{part_id}", json={
-        "name": part["name"], "cost_price": 10.0, "quantity": 3,
-    })
-    assert dn.status_code == 200
-    cash3 = client.get(f"{API}/cash").json()
-    movs3 = [m for m in cash3 if m.get("reference_id") == part_id and m.get("category") == "acquisto_ricambi"]
-    assert len(movs3) == 2, f"expected still 2 movements, got {len(movs3)}"
+def test_part_quantity_increase_generates_delta(client, cash_part):
+    set_qty(client, cash_part, 6)
+    amounts = sorted(m["amount"] for m in cash_for(client, cash_part["id"], "acquisto_ricambi"))
+    assert amounts == [20.0, 40.0]
 
-    # cash reference endpoint returns type 'part'
-    ref = client.get(f"{API}/cash/{movs3[0]['id']}/reference")
+
+def test_part_quantity_decrease_no_movement(client, cash_part):
+    set_qty(client, cash_part, 3)
+    assert len(cash_for(client, cash_part["id"], "acquisto_ricambi")) == 1
+
+
+def test_part_cash_reference_type(client, cash_part):
+    mov = cash_for(client, cash_part["id"], "acquisto_ricambi")[0]
+    ref = client.get(f"{API}/cash/{mov['id']}/reference")
     assert ref.status_code == 200
-    body = ref.json()
-    assert body["type"] == "part"
-    assert body["data"]["id"] == part_id
-
-    # cleanup
-    client.delete(f"{API}/parts/{part_id}")
+    assert ref.json()["type"] == "part"
+    assert ref.json()["data"]["id"] == cash_part["id"]

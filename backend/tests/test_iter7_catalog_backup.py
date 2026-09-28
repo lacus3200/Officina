@@ -1,24 +1,6 @@
 """Iter7 backend tests: part-categories rename, part-brands, template update propagation,
 part POST with brand, backup export/import merge & replace on small collection."""
-import os
-import pytest
-import requests
-
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
-if not BASE_URL:
-    with open("/app/frontend/.env") as f:
-        for line in f:
-            if line.startswith("REACT_APP_BACKEND_URL"):
-                BASE_URL = line.split("=", 1)[1].strip().rstrip("/")
-
-
-@pytest.fixture(scope="module")
-def client():
-    s = requests.Session()
-    r = s.post(f"{BASE_URL}/api/auth/login",
-               json={"email": "admin@lab.local", "password": "admin123"})
-    assert r.status_code == 200, r.text
-    return s
+from conftest import BASE_URL
 
 
 # ---------- part-categories ----------

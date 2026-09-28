@@ -1,20 +1,6 @@
 """Iteration 5: Services listino, catalog/colors model_id, refurbished open-repair."""
 import os
-import pytest
-import requests
-
-BASE_URL = (os.environ.get("REACT_APP_BACKEND_URL") or "").rstrip("/")
-assert BASE_URL, "REACT_APP_BACKEND_URL missing"
-API = f"{BASE_URL}/api"
-
-
-@pytest.fixture(scope="session")
-def client():
-    s = requests.Session()
-    r = s.post(f"{API}/auth/login", json={"email": "admin@lab.local", "password": "admin123"})
-    assert r.status_code == 200, r.text
-    s.headers.update({"Authorization": f"Bearer {r.json()['token']}", "Content-Type": "application/json"})
-    return s
+from conftest import API
 
 
 # ---------- Services listino ----------

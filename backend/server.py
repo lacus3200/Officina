@@ -662,7 +662,7 @@ async def me(user: dict = Depends(get_current_user)):
 
 # ---------- Helpers ----------
 def clean(doc: dict) -> dict:
-    if doc is None:
+    if not doc:
         return doc
     doc.pop("_id", None)
     return doc
@@ -952,8 +952,7 @@ async def delete_cash(mov_id: str, user: dict = Depends(get_current_user)):
     return {"ok": True}
 
 
-async def sync_cash() -> dict:
-    stats = {"sales_added": 0, "sales_fixed": 0, "orphans_removed": 0, "repairs_added": 0, "parts_added": 0}
+async def sync_sales_cash(stats: dict) -> set:
     sale_ids = set()
     async for sale in db.sales.find({}):
         sale_ids.add(sale["id"])
@@ -966,25 +965,41 @@ async def sync_cash() -> dict:
         elif abs(float(mov["amount"]) - float(sale["total"])) > 0.005:
             await db.cash_movements.update_one({"id": mov["id"]}, {"$set": {"amount": float(sale["total"])}})
             stats["sales_fixed"] += 1
+    return sale_ids
+
+
+async def remove_orphan_sale_movements(sale_ids: set, stats: dict):
     async for mov in db.cash_movements.find({"category": "vendita", "reference_id": {"$ne": None}}):
         if mov["reference_id"] not in sale_ids:
             await db.cash_movements.delete_one({"id": mov["id"]})
             stats["orphans_removed"] += 1
+
+
+async def sync_repairs_cash(stats: dict):
     async for rep in db.repairs.find({"status": "consegnata", "paid": True, "final_price": {"$gt": 0}}):
-        if not await db.cash_movements.find_one({"reference_id": rep["id"], "category": "riparazione"}):
-            m = CashMovement(type="entrata", category="riparazione", amount=float(rep["final_price"]),
-                             description=f"Riparazione {rep['ticket_number']}", reference_id=rep["id"],
-                             date=rep.get("delivered_at") or rep["updated_at"])
-            await db.cash_movements.insert_one(m.model_dump())
-            stats["repairs_added"] += 1
-    async for part in db.parts.find({}):
-        if float(part.get("cost_price") or 0) <= 0:
+        if await db.cash_movements.find_one({"reference_id": rep["id"], "category": "riparazione"}):
             continue
-        if not await db.cash_movements.find_one({"reference_id": part["id"], "category": "acquisto_ricambi"}):
-            qty = int(part.get("quantity", 0))
-            if qty > 0:
-                await record_part_purchase({**part, "entered_at": part.get("entered_at") or part.get("created_at")}, qty)
-                stats["parts_added"] += 1
+        m = CashMovement(type="entrata", category="riparazione", amount=float(rep["final_price"]),
+                         description=f"Riparazione {rep['ticket_number']}", reference_id=rep["id"],
+                         date=rep.get("delivered_at") or rep["updated_at"])
+        await db.cash_movements.insert_one(m.model_dump())
+        stats["repairs_added"] += 1
+
+
+async def sync_parts_cash(stats: dict):
+    async for part in db.parts.find({"cost_price": {"$gt": 0}, "quantity": {"$gt": 0}}):
+        if await db.cash_movements.find_one({"reference_id": part["id"], "category": "acquisto_ricambi"}):
+            continue
+        await record_part_purchase({**part, "entered_at": part.get("entered_at") or part.get("created_at")}, int(part["quantity"]))
+        stats["parts_added"] += 1
+
+
+async def sync_cash() -> dict:
+    stats = {"sales_added": 0, "sales_fixed": 0, "orphans_removed": 0, "repairs_added": 0, "parts_added": 0}
+    sale_ids = await sync_sales_cash(stats)
+    await remove_orphan_sale_movements(sale_ids, stats)
+    await sync_repairs_cash(stats)
+    await sync_parts_cash(stats)
     return stats
 
 
@@ -1085,6 +1100,35 @@ async def update_order(order_id: str, body: PurchaseOrderUpdate, user: dict = De
     return clean(await db.purchase_orders.find_one({"id": order_id}))
 
 
+async def apply_receipt_line(items: list, r: ReceiveItem) -> float:
+    if r.index < 0 or r.index >= len(items) or r.quantity <= 0:
+        return 0.0
+    it = items[r.index]
+    qty = min(r.quantity, it["quantity"] - it.get("received_qty", 0))
+    if qty <= 0:
+        return 0.0
+    it["received_qty"] = it.get("received_qty", 0) + qty
+    if it.get("part_id"):
+        await db.parts.update_one(
+            {"id": it["part_id"]},
+            {"$inc": {"quantity": qty}, "$set": {"status": "disponibile", "updated_at": now_iso()}},
+        )
+    return qty * it["unit_cost"]
+
+
+async def record_order_expense(order: dict, spent: float):
+    if spent <= 0:
+        return
+    mov = CashMovement(
+        type="uscita",
+        category="acquisto",
+        amount=round(spent, 2),
+        description=f"Ricambi ordine {order['order_number']} · {order.get('supplier_name') or 'fornitore'}",
+        reference_id=order["id"],
+    )
+    await db.cash_movements.insert_one(mov.model_dump())
+
+
 @api.post("/purchase-orders/{order_id}/receive")
 async def receive_order(order_id: str, body: ReceiveIn, user: dict = Depends(get_current_user)):
     o = await db.purchase_orders.find_one({"id": order_id})
@@ -1093,36 +1137,13 @@ async def receive_order(order_id: str, body: ReceiveIn, user: dict = Depends(get
     if o["status"] == "annullato":
         raise HTTPException(400, "Ordine annullato")
     items = o["items"]
-    spent = 0.0
-    for r in body.items:
-        if r.index < 0 or r.index >= len(items) or r.quantity <= 0:
-            continue
-        it = items[r.index]
-        remaining = it["quantity"] - it.get("received_qty", 0)
-        qty = min(r.quantity, remaining)
-        if qty <= 0:
-            continue
-        it["received_qty"] = it.get("received_qty", 0) + qty
-        spent += qty * it["unit_cost"]
-        if it.get("part_id"):
-            await db.parts.update_one(
-                {"id": it["part_id"]},
-                {"$inc": {"quantity": qty}, "$set": {"status": "disponibile", "updated_at": now_iso()}},
-            )
+    spent = sum([await apply_receipt_line(items, r) for r in body.items])
     status = derive_order_status(items, o["status"])
     upd = {"items": items, "status": status, "updated_at": now_iso()}
     if status == "ricevuto" and not o.get("received_at"):
         upd["received_at"] = now_iso()
     await db.purchase_orders.update_one({"id": order_id}, {"$set": upd})
-    if spent > 0:
-        mov = CashMovement(
-            type="uscita",
-            category="acquisto",
-            amount=round(spent, 2),
-            description=f"Ricambi ordine {o['order_number']} · {o.get('supplier_name') or 'fornitore'}",
-            reference_id=order_id,
-        )
-        await db.cash_movements.insert_one(mov.model_dump())
+    await record_order_expense(o, spent)
     return clean(await db.purchase_orders.find_one({"id": order_id}))
 
 
@@ -1583,96 +1604,103 @@ async def export_backup(user: dict = Depends(get_current_user)):
     return {"version": 1, "exported_at": now_iso(), "collections": data}
 
 
-@api.post("/backup/import")
-async def import_backup(body: BackupIn, user: dict = Depends(get_current_user)):
-    unknown = [k for k in body.collections if k not in BACKUP_COLLECTIONS]
+def validate_backup_payload(collections: dict):
+    unknown = [k for k in collections if k not in BACKUP_COLLECTIONS]
     if unknown:
         raise HTTPException(400, f"Collezioni non riconosciute: {', '.join(unknown)}")
-    result = {}
-    for name, docs in body.collections.items():
-        if not isinstance(docs, list):
-            raise HTTPException(400, f"Formato non valido per {name}")
-        if body.mode == "replace":
-            await db[name].delete_many({})
-            if docs:
-                await db[name].insert_many([dict(d) for d in docs])
-            result[name] = len(docs)
-        else:
-            n = 0
-            for d in docs:
-                key = {"_id": d["_id"]} if name == "counters" and "_id" in d else {"id": d.get("id")}
-                if key.get("id") is None and name != "counters":
-                    continue
-                await db[name].replace_one(key, dict(d), upsert=True)
-                n += 1
-            result[name] = n
+    bad = [k for k, v in collections.items() if not isinstance(v, list)]
+    if bad:
+        raise HTTPException(400, f"Formato non valido per {', '.join(bad)}")
+
+
+async def replace_collection(name: str, docs: list) -> int:
+    await db[name].delete_many({})
+    if docs:
+        await db[name].insert_many([dict(d) for d in docs])
+    return len(docs)
+
+
+def merge_key(name: str, doc: dict) -> Optional[dict]:
+    if name == "counters":
+        return {"_id": doc["_id"]} if "_id" in doc else None
+    return {"id": doc["id"]} if doc.get("id") else None
+
+
+async def merge_collection(name: str, docs: list) -> int:
+    n = 0
+    for d in docs:
+        key = merge_key(name, d)
+        if key:
+            await db[name].replace_one(key, dict(d), upsert=True)
+            n += 1
+    return n
+
+
+@api.post("/backup/import")
+async def import_backup(body: BackupIn, user: dict = Depends(get_current_user)):
+    validate_backup_payload(body.collections)
+    handler = replace_collection if body.mode == "replace" else merge_collection
+    result = {name: await handler(name, docs) for name, docs in body.collections.items()}
     return {"ok": True, "mode": body.mode, "imported": result}
 
 
 # ---------- Reports / Dashboard ----------
+async def sum_cash(match: dict) -> dict:
+    cursor = db.cash_movements.aggregate([
+        {"$match": match},
+        {"$group": {"_id": "$type", "total": {"$sum": "$amount"}}},
+    ])
+    totals = {"entrata": 0.0, "uscita": 0.0}
+    async for row in cursor:
+        totals[row["_id"]] = row["total"]
+    return totals
+
+
+def cash_summary(t: dict) -> dict:
+    return {
+        "entrate": round(t["entrata"], 2),
+        "uscite": round(t["uscita"], 2),
+        "netto": round(t["entrata"] - t["uscita"], 2),
+    }
+
+
+async def daily_cash_series(now: datetime, days: int = 14) -> list:
+    series = []
+    for i in range(days - 1, -1, -1):
+        day = (now - timedelta(days=i)).replace(hour=0, minute=0, second=0, microsecond=0)
+        row = await sum_cash({"date": {"$gte": day.isoformat(), "$lt": (day + timedelta(days=1)).isoformat()}})
+        series.append({"date": day.strftime("%d/%m"), "entrate": round(row["entrata"], 2), "uscite": round(row["uscita"], 2)})
+    return series
+
+
+async def inventory_stats() -> dict:
+    parts = await db.parts.find({}).to_list(2000)
+    low_stock = [clean(p) for p in parts if p.get("quantity", 0) <= p.get("min_quantity", 0)]
+    return {
+        "low_stock_count": len(low_stock),
+        "low_stock_items": low_stock[:10],
+        "inventory_value": round(sum(p.get("quantity", 0) * p.get("cost_price", 0) for p in parts), 2),
+    }
+
+
 @api.get("/reports/dashboard")
 async def dashboard(user: dict = Depends(get_current_user)):
     now = datetime.now(timezone.utc)
-    start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-    start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
-
-    async def sum_cash(match: dict) -> float:
-        cursor = db.cash_movements.aggregate([
-            {"$match": match},
-            {"$group": {"_id": "$type", "total": {"$sum": "$amount"}}},
-        ])
-        totals = {"entrata": 0.0, "uscita": 0.0}
-        async for row in cursor:
-            totals[row["_id"]] = row["total"]
-        return totals
-
-    today_totals = await sum_cash({"date": {"$gte": start_of_day}})
-    month_totals = await sum_cash({"date": {"$gte": start_of_month}})
-
-    open_repairs = await db.repairs.count_documents({"status": {"$in": ["in_attesa", "in_lavorazione"]}})
-    completed_repairs = await db.repairs.count_documents({"status": "completata"})
-    total_customers = await db.customers.count_documents({})
-
-    parts = await db.parts.find({}).to_list(2000)
-    low_stock = [clean(p) for p in parts if p.get("quantity", 0) <= p.get("min_quantity", 0)]
-    total_parts_value = sum(p.get("quantity", 0) * p.get("cost_price", 0) for p in parts)
-
-    # daily revenue last 14 days
-    daily = []
-    for i in range(13, -1, -1):
-        day = (now - timedelta(days=i)).replace(hour=0, minute=0, second=0, microsecond=0)
-        next_day = day + timedelta(days=1)
-        row = await sum_cash({"date": {"$gte": day.isoformat(), "$lt": next_day.isoformat()}})
-        daily.append({
-            "date": day.strftime("%d/%m"),
-            "entrate": round(row["entrata"], 2),
-            "uscite": round(row["uscita"], 2),
-        })
-
+    start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    start_of_month = start_of_day.replace(day=1)
     return {
-        "today": {
-            "entrate": round(today_totals["entrata"], 2),
-            "uscite": round(today_totals["uscita"], 2),
-            "netto": round(today_totals["entrata"] - today_totals["uscita"], 2),
-        },
-        "month": {
-            "entrate": round(month_totals["entrata"], 2),
-            "uscite": round(month_totals["uscita"], 2),
-            "netto": round(month_totals["entrata"] - month_totals["uscita"], 2),
-        },
-        "open_repairs": open_repairs,
-        "completed_repairs": completed_repairs,
-        "total_customers": total_customers,
-        "low_stock_count": len(low_stock),
-        "low_stock_items": low_stock[:10],
-        "inventory_value": round(total_parts_value, 2),
-        "daily_series": daily,
+        "today": cash_summary(await sum_cash({"date": {"$gte": start_of_day.isoformat()}})),
+        "month": cash_summary(await sum_cash({"date": {"$gte": start_of_month.isoformat()}})),
+        "open_repairs": await db.repairs.count_documents({"status": {"$in": ["in_attesa", "in_lavorazione"]}}),
+        "completed_repairs": await db.repairs.count_documents({"status": "completata"}),
+        "total_customers": await db.customers.count_documents({}),
+        **(await inventory_stats()),
+        "daily_series": await daily_cash_series(now),
     }
 
 
 # ---------- Startup ----------
-@app.on_event("startup")
-async def startup():
+async def setup_indexes():
     await db.users.create_index("email", unique=True)
     await db.customers.create_index("name")
     await db.parts.create_index("name")
@@ -1681,33 +1709,44 @@ async def startup():
     await db.cash_movements.create_index("date")
     await db.device_models.create_index("brand")
 
-    if await db.device_brands.count_documents({}) == 0:
-        brands, models = [], []
-        for brand, items in DEVICE_CATALOG.items():
-            brands.append({"id": new_id(), "name": brand, "custom": False, "created_at": now_iso()})
-            for name, code in items:
-                models.append({"id": new_id(), "brand": brand, "name": name, "code": code, "custom": False, "created_at": now_iso()})
-        await db.device_brands.insert_many(brands)
-        await db.device_models.insert_many(models)
-        logger.info(f"Catalogo dispositivi inizializzato: {len(brands)} marche, {len(models)} modelli")
 
-    if await db.services.count_documents({}) == 0:
-        await db.services.insert_many([
-            Service(name=n, category=c, device_type=t, price=p).model_dump() for n, c, t, p in SERVICE_SEED
-        ])
-        logger.info("Listino interventi inizializzato")
+async def seed_device_catalog():
+    if await db.device_brands.count_documents({}) > 0:
+        return
+    brands, models = [], []
+    for brand, items in DEVICE_CATALOG.items():
+        brands.append({"id": new_id(), "name": brand, "custom": False, "created_at": now_iso()})
+        for name, code in items:
+            models.append({"id": new_id(), "brand": brand, "name": name, "code": code, "custom": False, "created_at": now_iso()})
+    await db.device_brands.insert_many(brands)
+    await db.device_models.insert_many(models)
+    logger.info(f"Catalogo dispositivi inizializzato: {len(brands)} marche, {len(models)} modelli")
 
-    if await db.part_templates.count_documents({}) == 0:
-        await db.part_templates.insert_many([
-            {"id": new_id(), "name": n, "category": guess_part_category(n) or "Altro", "custom": False, "created_at": now_iso()}
-            for n in PART_TEMPLATE_SEED
-        ])
-        logger.info("Catalogo ricambi inizializzato")
 
+async def seed_services():
+    if await db.services.count_documents({}) > 0:
+        return
+    await db.services.insert_many([
+        Service(name=n, category=c, device_type=t, price=p).model_dump() for n, c, t, p in SERVICE_SEED
+    ])
+    logger.info("Listino interventi inizializzato")
+
+
+async def seed_part_templates():
+    if await db.part_templates.count_documents({}) > 0:
+        return
+    await db.part_templates.insert_many([
+        {"id": new_id(), "name": n, "category": guess_part_category(n) or "Altro", "custom": False, "created_at": now_iso()}
+        for n in PART_TEMPLATE_SEED
+    ])
+    logger.info("Catalogo ricambi inizializzato")
+
+
+async def ensure_admin_user():
     admin_email = os.environ["ADMIN_EMAIL"].lower()
     admin_password = os.environ["ADMIN_PASSWORD"]
     existing = await db.users.find_one({"email": admin_email})
-    if existing is None:
+    if not existing:
         await db.users.insert_one({
             "id": new_id(),
             "email": admin_email,
@@ -1718,11 +1757,17 @@ async def startup():
         })
         logger.info(f"Admin creato: {admin_email}")
     elif not verify_password(admin_password, existing["password_hash"]):
-        await db.users.update_one(
-            {"email": admin_email},
-            {"$set": {"password_hash": hash_password(admin_password)}},
-        )
+        await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": hash_password(admin_password)}})
         logger.info("Password admin aggiornata da .env")
+
+
+@app.on_event("startup")
+async def startup():
+    await setup_indexes()
+    await seed_device_catalog()
+    await seed_services()
+    await seed_part_templates()
+    await ensure_admin_user()
 
 
 @app.on_event("shutdown")

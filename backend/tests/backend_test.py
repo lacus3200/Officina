@@ -4,31 +4,9 @@ Covers: auth, customers CRUD, parts CRUD + low_stock filter, repairs
 partial updates -> consegnata+paid triggers cash entry, sales creation
 decrements stock + creates cash, cash movements, dashboard series.
 """
-import os
-import pytest
 import requests
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://tech-workshop-13.preview.emergentagent.com").rstrip("/")
-API = f"{BASE_URL}/api"
-
-ADMIN_EMAIL = "admin@lab.local"
-ADMIN_PASSWORD = "admin123"
-
-
-@pytest.fixture(scope="session")
-def token():
-    r = requests.post(f"{API}/auth/login", json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD})
-    assert r.status_code == 200, r.text
-    data = r.json()
-    assert "token" in data and isinstance(data["token"], str) and len(data["token"]) > 0
-    return data["token"]
-
-
-@pytest.fixture(scope="session")
-def client(token):
-    s = requests.Session()
-    s.headers.update({"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
-    return s
+from conftest import API, ADMIN_EMAIL
 
 
 # ---------- Auth ----------
