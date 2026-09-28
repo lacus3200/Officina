@@ -142,6 +142,17 @@
 - ✅ Data acquisto nel form Ricondizionato (propagata alla cassa)
 - ✅ Test iteration_12: backend 101/101, frontend E2E OK.
 
+## Implemented (2026-06 — sessione 10)
+- ✅ Riparazioni: select ricambi solo disponibili (qty>0), prezzo auto, colonna Sovrapprezzo
+  (RepairPartUsed.surcharge); costo ricambi del ricondizionato collegato = Σ(qty×prezzo+sovr.)
+  (parts_used_total) e margine/vendita aggiornati (sync_refurb_sale_cost)
+- ✅ Cancellazioni guidate: refurb → chiede elimina vendita e ripristino ricambi
+  (DELETE ?delete_sale&restore_parts, elimina anche il ticket collegato); riparazione → chiede
+  ripristino ricambi (?restore_parts); il ripristino non genera uscite cassa
+- ✅ Coerenza: prezzo finale riparazione pagata → cassa; paid=false → rimuove movimento
+- ✅ Dettaglio riga (DetailDialog) su Clienti, Magazzino, Riparazioni, Vendite (+ Cassa esistente)
+- ✅ Test iteration_13: backend 110/110, frontend E2E OK.
+
 ## Backlog (P1/P2)
 - P1 Filtri per data su report (settimana/mese/trimestre/anno)
 - P1 Riordino rapido da "sotto scorta" → crea ordine precompilato al fornitore

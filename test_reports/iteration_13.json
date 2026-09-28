@@ -1,0 +1,32 @@
+{
+  "summary": "Iter13 testing (both). Backend: added tests/test_iter13_surcharge_delete_flows.py with 9 new tests (all passing). Full backend suite 110/110 passing (up from 101). Covered: (1) RepairPartUsed.surcharge persists on POST + PUT, parts_used_total = Σ(qty*unit_price + surcharge); stock delta correct on update. (2) enrich_refurb parts_cost via ticket collegato: cost 100 + (qty 1 * price 20 + surcharge 7) => total_cost=127, expected_margin=173 with target=300. (3) PUT /repairs/{id} final_price on consegnata+paid updates cash_movements.amount; PUT paid=false rimuove il movimento. (4) DELETE /repairs?restore_parts=false lascia stock invariato; ?restore_parts=true ripristina stock SENZA creare acquisto_ricambi. (5) DELETE /refurbished?delete_sale=true&restore_parts=true elimina refurb+sale+cassa vendita+repair collegata e ripristina stock (no acquisto movements). (6) delete_sale=false mantiene la vendita. (7) sync_refurb_sale_cost aggiorna sale.cost_total e sale.margin quando cambia parts_used del ticket collegato (test: 300-125=175). Frontend Playwright E2E: login OK; row-detail dialogs verificati per tutte e 4 le pagine (customer-detail-dialog + customer-detail-edit, part-detail-dialog, repair-detail-dialog + repair-detail-edit, sale-detail-dialog); repair form: TEST_UI_Zero (qty=0) NON appare in repair-part-select-0 (0 opzioni), TEST_UI_Disp (qty>0) appare, selezionandolo repair-part-price-0 auto-popolato a 20, repair-part-surcharge-0 accetta valore 5. Delete-refurb cascade: 3 confirm sequenziali intercettati e accettati ('Eliminare il dispositivo…', 'eliminare anche la vendita…', 'ripristinarli in magazzino?'); post-delete: refurb 404 ✓, sale scomparsa ✓, stock ripristinato a 3 ✓, nessun nuovo movimento acquisto_ricambi (rispetto al pre-esistente creato dalla POST /parts). Tutti i dati TEST_ ripuliti via API.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter13_surcharge_delete_flows.py",
+    "/app/test_reports/pytest/iter13.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py:176 parts_used_total correctly sums qty*unit_price + surcharge; used by enrich_refurb line 1293 so total_cost/expected_margin/margin propagate automatically.",
+    "server.py:924-927 update_repair handles final_price change AND paid=false (delete_many by reference_id) in the same PUT — clean and idempotent.",
+    "server.py:928 sync_refurb_sale_cost invoked after every repair update — ensures sale.cost_total and sale.margin stay in sync with the ticket's parts_used (test: 100 -> 125 -> margin 175 verified).",
+    "server.py:949-956 delete_repair with restore_parts:bool=True is the correct default (safer) and IMPORTANTLY does NOT create cash movements (apply_parts_stock_delta only increments parts.quantity — no cash side-effect) — matches the spec 'il ripristino NON crea uscite di cassa'.",
+    "server.py:1493-1510 delete_refurbished cascade with delete_sale/restore_parts flags: also cleans cash movements for refurb_costs ids and sale_id — comprehensive. Deletes the linked repair (delete_one) after applying stock delta.",
+    "RepairsPage.jsx:415-424 filter `(Number(p.quantity) > 0 || p.id === pu.part_id)` correctly hides parti a giacenza zero MA mantiene visibile quella già selezionata — verified in UI (zero-qty part returned 0 options).",
+    "RepairsPage.jsx:459-471 repair-part-surcharge-{i} column present; onChange writes surcharge to the parts_used entry — flows into POST/PUT.",
+    "RefurbDetailDialog.jsx:48 Timeline shows part_name ×qty +surcharge € — verified string format matches spec.",
+    "DetailDialog.jsx is a clean generic component reused by all 4 pages (customer/part/repair/sale) — good DRY.",
+    "Confirm dialogs use native window.confirm in sequence in RefurbishedPage.remove(): 3 prompts (elimina / elimina vendita / ripristina ricambi) — semantic and testable via page.on('dialog').",
+    "Minor: server.py 2129 lines — carry-over from iter12: still worth splitting into routers/*.py modules for maintainability.",
+    "Row click uses onClick on <tr> — actions (edit/delete/print) inside must call e.stopPropagation() or use event.stopPropagation to avoid opening the detail dialog. Spot-checked: RepairsPage/CustomersPage/InventoryPage/SalesPage pass this — verified in UI (I did not accidentally trigger detail when clicking Edit/Delete via keyboard escape flow)."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter13_surcharge_delete_flows.py"],
+  "success_rate": {"backend": "100% (110/110)", "frontend": "100% (all iter13 flows verified)"},
+  "test_credentials": "admin@lab.local / admin123 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "TEST_UI_* customers/parts/refurb/repairs/sales created via API per test, fully cleaned up. Cross-test residuals from prior iterations also purged (TEST_ prefixed customers/parts/repairs/refurbs).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All iter13 features (surcharge column, refurb cost sync, cascade deletes with 3 confirms on refurb + 2 on repair, row-detail dialogs on 4 pages) verified end-to-end. Backend suite command: cd /app/backend && python -m pytest tests -q -n 0 (110 passing). New test file: tests/test_iter13_surcharge_delete_flows.py.",
+  "rca of the issue": "N/A — no issues found this iteration. All spec'd behaviors (surcharge persistence, refurb cost/margin re-computation, cash sync/removal on final_price/paid changes, delete flows with restore_parts flag not creating acquisto_ricambi, cascade delete with delete_sale/restore_parts flags, and UI row-detail dialogs across all 4 tables) working correctly."
+}
