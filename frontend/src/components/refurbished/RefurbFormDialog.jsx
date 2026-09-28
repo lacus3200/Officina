@@ -22,6 +22,7 @@ import { DEVICE_TYPES, REFURB_STATUS } from "@/lib/format";
 import { DeviceBrandModelFields } from "@/components/DeviceBrandModelFields";
 import { SerialHistoryAlert } from "@/components/SerialHistoryAlert";
 import { ColorSelect } from "@/components/ColorSelect";
+import { SearchSelect } from "@/components/SearchSelect";
 
 const EMPTY = {
     device_type: "Smartphone",
@@ -92,16 +93,14 @@ export function RefurbFormDialog({ open, onOpenChange, editing, onSaved }) {
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                         <div>
                             <Label className="eyebrow">Tipo *</Label>
-                            <Select value={form.device_type} onValueChange={set("device_type")}>
-                                <SelectTrigger data-testid="refurb-type-select">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {DEVICE_TYPES.map((t) => (
-                                        <SelectItem key={t} value={t}>{t}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            <SearchSelect
+                                testId="refurb-type-select"
+                                value={form.device_type}
+                                placeholder="Tipo"
+                                searchPlaceholder="Cerca tipo…"
+                                options={DEVICE_TYPES.map((t) => ({ value: t, label: t }))}
+                                onChange={(v) => setForm({ ...form, device_type: v })}
+                            />
                         </div>
                         <DeviceBrandModelFields
                             brand={form.brand}

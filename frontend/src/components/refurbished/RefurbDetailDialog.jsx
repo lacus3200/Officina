@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { currency, formatDate, REFURB_STATUS } from "@/lib/format";
 import { StatusBadge } from "@/components/StatusBadge";
 import { CustomerSelect } from "@/components/CustomerSelect";
+import { SearchSelect } from "@/components/SearchSelect";
 import {
     ShoppingBag,
     Wrench,
@@ -223,22 +224,15 @@ export function RefurbDetailDialog({ item, onOpenChange, onChanged }) {
                                 </Button>
                             </div>
                             <div className="flex gap-2">
-                                <Select
-                                    value={item.repair_id || "none"}
-                                    onValueChange={(v) => run(() => api.put(`/refurbished/${item.id}`, { repair_id: v === "none" ? null : v }), "Ticket collegato")}
-                                >
-                                    <SelectTrigger data-testid="refurb-repair-select">
-                                        <SelectValue placeholder="Nessuna riparazione" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="none">— nessuna —</SelectItem>
-                                        {repairs.map((r) => (
-                                            <SelectItem key={r.id} value={r.id}>
-                                                {r.ticket_number} · {r.device_brand} {r.device_model}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                <SearchSelect
+                                    testId="refurb-repair-select"
+                                    value={item.repair_id || ""}
+                                    placeholder="Nessuna riparazione"
+                                    searchPlaceholder="Cerca ticket…"
+                                    noneLabel="— nessuna —"
+                                    options={repairs.map((r) => ({ value: r.id, label: `${r.ticket_number} · ${r.device_brand || ""} ${r.device_model || ""}`.trim(), keywords: `${r.customer_name || ""} ${r.serial_or_imei || ""}` }))}
+                                    onChange={(v) => run(() => api.put(`/refurbished/${item.id}`, { repair_id: v || null }), v ? "Ticket collegato" : "Ticket scollegato")}
+                                />
                                 <Link2 className="h-4 w-4 mt-3 text-muted-foreground shrink-0" />
                             </div>
                         </div>

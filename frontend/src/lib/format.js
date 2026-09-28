@@ -85,10 +85,10 @@ export const ORDER_STATUS = {
 };
 
 export const DEVICE_TYPES = [
+    "Altro",
+    "Console",
     "PC / Notebook",
     "Smartphone",
     "Tablet",
-    "Console",
     "TV / Monitor",
-    "Altro",
 ];

@@ -4,11 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus } from "lucide-react";
+import { SearchSelect } from "@/components/SearchSelect";
 import { toast } from "sonner";
 
-const NEW = "__new__";
 
 export function ColorSelect({ brand, model, value, onChange }) {
     const [colors, setColors] = useState([]);
@@ -40,21 +38,16 @@ export function ColorSelect({ brand, model, value, onChange }) {
 
     return (
         <>
-            <Select
-                value={value || "none"}
-                onValueChange={(v) => {
-                    if (v === NEW) { setDraft(""); setOpen(true); return; }
-                    onChange(v === "none" ? "" : v);
-                }}
-            >
-                <SelectTrigger data-testid="refurb-color-select"><SelectValue placeholder="Colore" /></SelectTrigger>
-                <SelectContent>
-                    <SelectItem value="none">—</SelectItem>
-                    {value && !colors.includes(value) && <SelectItem value={value}>{value}</SelectItem>}
-                    {colors.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                    <SelectItem value={NEW} className="text-primary"><span className="flex items-center gap-1"><Plus className="h-3 w-3" /> Aggiungi colore…</span></SelectItem>
-                </SelectContent>
-            </Select>
+            <SearchSelect
+                testId="refurb-color-select"
+                value={value}
+                placeholder="Colore"
+                searchPlaceholder="Cerca colore…"
+                noneLabel="—"
+                options={[...colors.map((c) => ({ value: c, label: c })), ...(value && !colors.includes(value) ? [{ value, label: value }] : [])]}
+                onChange={(v) => onChange(v)}
+                actions={[{ label: "Aggiungi colore…", testId: "refurb-color-add", onSelect: () => { setDraft(""); setOpen(true); } }]}
+            />
             <Dialog open={open} onOpenChange={setOpen}>
                 <DialogContent className="bg-card border-border max-w-sm" data-testid="color-dialog">
                     <DialogHeader><DialogTitle>Nuovo colore{model ? ` · ${brand} ${model}` : ""}</DialogTitle></DialogHeader>

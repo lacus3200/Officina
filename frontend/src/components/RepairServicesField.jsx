@@ -3,8 +3,8 @@ import { api } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Trash2, Calculator } from "lucide-react";
+import { SearchSelect } from "@/components/SearchSelect";
+import { Trash2, Calculator } from "lucide-react";
 import { currency } from "@/lib/format";
 
 export function RepairServicesField({ services, deviceType, partsTotal, onChange, onUseAsEstimate }) {
@@ -25,22 +25,20 @@ export function RepairServicesField({ services, deviceType, partsTotal, onChange
         <div className="col-span-2 pt-2">
             <div className="flex items-center justify-between mb-2 gap-2">
                 <Label className="eyebrow">Interventi da listino</Label>
-                <Select value="" onValueChange={(v) => {
-                    const s = list.find((x) => x.id === v);
-                    if (s) onChange([...services, { service_id: s.id, name: s.name, price: s.price }]);
-                }}>
-                    <SelectTrigger className="w-64 h-8" data-testid="add-service-select">
-                        <span className="flex items-center gap-1 text-sm"><Plus className="h-3 w-3" /> Aggiungi intervento</span>
-                    </SelectTrigger>
-                    <SelectContent>
-                        {list.map((s) => (
-                            <SelectItem key={s.id} value={s.id}>
-                                {s.name} <span className="text-muted-foreground">· {currency(s.price)}</span>
-                            </SelectItem>
-                        ))}
-                        {list.length === 0 && <div className="px-2 py-1.5 text-xs text-muted-foreground">Listino vuoto</div>}
-                    </SelectContent>
-                </Select>
+                <div className="w-72">
+                    <SearchSelect
+                        testId="add-service-select"
+                        value=""
+                        placeholder="+ Aggiungi intervento"
+                        searchPlaceholder="Cerca intervento…"
+                        emptyLabel="Nessun intervento nel listino."
+                        options={list.map((s) => ({ value: s.id, label: `${s.name} · ${currency(s.price)}`, group: s.category || "Altro", keywords: s.category || "" }))}
+                        onChange={(v) => {
+                            const s = list.find((x) => x.id === v);
+                            if (s) onChange([...services, { service_id: s.id, name: s.name, price: s.price }]);
+                        }}
+                    />
+                </div>
             </div>
             <div className="space-y-2">
                 {services.map((s, i) => (

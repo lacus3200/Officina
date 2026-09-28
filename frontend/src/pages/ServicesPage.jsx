@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchSelect } from "@/components/SearchSelect";
 import { Plus, Search, Pencil, Trash2, Check, ListChecks } from "lucide-react";
 import { toast } from "sonner";
 import { currency, DEVICE_TYPES } from "@/lib/format";
@@ -150,13 +150,14 @@ export default function ServicesPage() {
                             <div><Label className="eyebrow">Categoria</Label><Input value={form.category || ""} placeholder="Schermo, Batteria, Software…" onChange={(e) => setForm({ ...form, category: e.target.value })} /></div>
                             <div>
                                 <Label className="eyebrow">Dispositivo</Label>
-                                <Select value={form.device_type || "all"} onValueChange={(v) => setForm({ ...form, device_type: v === "all" ? "" : v })}>
-                                    <SelectTrigger><SelectValue /></SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="all">Tutti</SelectItem>
-                                        {DEVICE_TYPES.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
-                                    </SelectContent>
-                                </Select>
+                                <SearchSelect
+                                    testId="service-device-type-select"
+                                    value={form.device_type || ""}
+                                    placeholder="Tutti"
+                                    noneLabel="Tutti"
+                                    options={DEVICE_TYPES.map((d) => ({ value: d, label: d }))}
+                                    onChange={(v) => setForm({ ...form, device_type: v })}
+                                />
                             </div>
                             <div><Label className="eyebrow">Prezzo €</Label><Input type="number" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} data-testid="service-price-form-input" /></div>
                             <div><Label className="eyebrow">Durata (min)</Label><Input type="number" value={form.duration_minutes} onChange={(e) => setForm({ ...form, duration_minutes: e.target.value })} /></div>

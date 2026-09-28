@@ -41,6 +41,7 @@ import { CustomerSelect } from "@/components/CustomerSelect";
 import { DeviceBrandModelFields } from "@/components/DeviceBrandModelFields";
 import { SerialHistoryAlert } from "@/components/SerialHistoryAlert";
 import { RepairServicesField } from "@/components/RepairServicesField";
+import { SearchSelect } from "@/components/SearchSelect";
 import { useColumnWidths, ResizableTh, ScrollTable, useTableSort, useSelection, SelectAllCheckbox, RowCheckbox, BulkBar, bulkDelete } from "@/components/ResizableTable";
 
 const COLS = ["Ticket", "Cliente", "Dispositivo", "Problema", "Stato", "Prezzo", "Entrata / Uscita", "Azioni"];
@@ -246,21 +247,14 @@ export default function RepairsPage() {
                             )}
                             <div>
                                 <Label className="eyebrow">Tipo dispositivo</Label>
-                                <Select
+                                <SearchSelect
+                                    testId="repair-device-type-select"
                                     value={form.device_type}
-                                    onValueChange={(v) => setForm({ ...form, device_type: v })}
-                                >
-                                    <SelectTrigger data-testid="repair-device-type-select">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {DEVICE_TYPES.map((d) => (
-                                            <SelectItem key={d} value={d}>
-                                                {d}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                    placeholder="Tipo dispositivo"
+                                    searchPlaceholder="Cerca tipo…"
+                                    options={DEVICE_TYPES.map((d) => ({ value: d, label: d }))}
+                                    onChange={(v) => setForm({ ...form, device_type: v })}
+                                />
                             </div>
                             <DeviceBrandModelFields
                                 brand={form.device_brand}
@@ -398,9 +392,22 @@ export default function RepairsPage() {
                                             className="grid grid-cols-12 gap-2 items-center"
                                         >
                                             <div className="col-span-6">
-                                                <Select
+                                                <SearchSelect
+                                                    testId={`repair-part-select-${i}`}
                                                     value={pu.part_id || ""}
-                                                    onValueChange={(v) => {
+                                                    placeholder="Seleziona ricambio"
+                                                    searchPlaceholder="Cerca ricambio…"
+                                                    sorted={false}
+                                                    options={(() => {
+                                                        const compat = parts.filter((p) => isCompatible(p, form.device_brand, form.device_model));
+                                                        const byName = (a, b) => a.name.localeCompare(b.name, "it", { numeric: true });
+                                                        const lbl = (p) => `${p.name}${p.brand ? ` (${p.brand})` : ""} · ${p.quantity} in stock`;
+                                                        return [
+                                                            ...[...compat].sort(byName).map((p) => ({ value: p.id, label: `✓ ${lbl(p)}`, group: `Compatibili con ${form.device_brand} ${form.device_model || ""}`.trim(), keywords: (p.compatible_models || []).join(" ") })),
+                                                            ...parts.filter((p) => !compat.includes(p)).sort(byName).map((p) => ({ value: p.id, label: lbl(p), group: compat.length ? "Altri ricambi" : "", keywords: p.brand || "" })),
+                                                        ];
+                                                    })()}
+                                                    onChange={(v) => {
                                                         const p = parts.find((x) => x.id === v);
                                                         updatePart(i, {
                                                             part_id: v,
@@ -408,39 +415,7 @@ export default function RepairsPage() {
                                                             unit_price: p?.sell_price || 0,
                                                         });
                                                     }}
-                                                >
-                                                    <SelectTrigger>
-                                                        <SelectValue placeholder="Seleziona ricambio" />
-                                                    </SelectTrigger>
-                                                    <SelectContent className="max-h-72">
-                                                        {(() => {
-                                                            const compat = parts.filter((p) => isCompatible(p, form.device_brand, form.device_model));
-                                                            const others = parts.filter((p) => !compat.includes(p));
-                                                            return (
-                                                                <>
-                                                                    {compat.length > 0 && (
-                                                                        <div className="px-2 pt-2 pb-1 eyebrow text-emerald-400" data-testid="compat-parts-header">
-                                                                            Compatibili con {form.device_brand} {form.device_model}
-                                                                        </div>
-                                                                    )}
-                                                                    {compat.map((p) => (
-                                                                        <SelectItem key={p.id} value={p.id} data-testid={`compat-part-${p.id}`}>
-                                                                            <span className="text-emerald-400 mr-1">✓</span>{p.name}{p.brand ? ` (${p.brand})` : ""} · {p.quantity} in stock
-                                                                        </SelectItem>
-                                                                    ))}
-                                                                    {compat.length > 0 && others.length > 0 && (
-                                                                        <div className="px-2 pt-2 pb-1 eyebrow">Altri ricambi</div>
-                                                                    )}
-                                                                    {others.map((p) => (
-                                                                        <SelectItem key={p.id} value={p.id}>
-                                                                            {p.name}{p.brand ? ` (${p.brand})` : ""} · {p.quantity} in stock
-                                                                        </SelectItem>
-                                                                    ))}
-                                                                </>
-                                                            );
-                                                        })()}
-                                                    </SelectContent>
-                                                </Select>
+                                                />
                                             </div>
                                             <Input
                                                 className="col-span-2"

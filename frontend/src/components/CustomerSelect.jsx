@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchSelect } from "@/components/SearchSelect";
 import { UserPlus } from "lucide-react";
 import { toast } from "sonner";
 
@@ -28,22 +28,16 @@ export function CustomerSelect({ customers, value, onChange, onCreated, placehol
     return (
         <>
             <div className="flex gap-2">
-                <Select
-                    value={value || "none"}
-                    onValueChange={(v) => onChange(v === "none" ? "" : v, customers.find((c) => c.id === v))}
-                >
-                    <SelectTrigger data-testid={testId}>
-                        <SelectValue placeholder={placeholder} />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="none">{noneLabel}</SelectItem>
-                        {customers.map((c) => (
-                            <SelectItem key={c.id} value={c.id}>
-                                {c.name}{c.phone ? ` · ${c.phone}` : ""}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
+                <SearchSelect
+                    testId={testId}
+                    value={value}
+                    placeholder={placeholder}
+                    searchPlaceholder="Cerca cliente per nome o telefono…"
+                    noneLabel={noneLabel}
+                    options={customers.map((c) => ({ value: c.id, label: c.name, keywords: c.phone || "" }))}
+                    renderLabel={(o) => { const c = customers.find((x) => x.id === o.value); return c?.phone ? `${c.name} · ${c.phone}` : o.label; }}
+                    onChange={(id) => onChange(id, customers.find((c) => c.id === id))}
+                />
                 <Button type="button" variant="outline" size="icon" className="shrink-0" title="Nuovo cliente" onClick={() => setOpen(true)} data-testid="quick-new-customer-button">
                     <UserPlus className="h-4 w-4" />
                 </Button>

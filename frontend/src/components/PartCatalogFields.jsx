@@ -4,13 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchSelect } from "@/components/SearchSelect";
 import { Plus, X, Check, ChevronsUpDown } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { toast } from "sonner";
 
-const NEW = "__new__";
 const FREE = "__free__";
 
 export function PartNameSelect({ value, onSelect }) {
@@ -128,20 +127,25 @@ export function CompatibleModelsField({ value, onChange }) {
         <div className="col-span-2">
             <Label className="eyebrow">Compatibile con i modelli</Label>
             <div className="grid grid-cols-2 gap-2 mt-1">
-                <Select value={brand || "none"} onValueChange={(v) => setBrand(v === "none" ? "" : v)}>
-                    <SelectTrigger data-testid="compat-brand-select"><SelectValue placeholder="Marca" /></SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="none">—</SelectItem>
-                        {brands.map((b) => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}
-                    </SelectContent>
-                </Select>
-                <Select value="" disabled={!brand} onValueChange={(v) => add(v === "__all__" ? `${brand} (tutti i modelli)` : `${brand} ${v}`)}>
-                    <SelectTrigger data-testid="compat-model-select"><SelectValue placeholder={brand ? "Aggiungi modello…" : "Scegli la marca"} /></SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="__all__">Tutti i modelli {brand}</SelectItem>
-                        {models.map((m) => <SelectItem key={m.id} value={m.name}>{m.name}{m.code ? ` (${m.code})` : ""}</SelectItem>)}
-                    </SelectContent>
-                </Select>
+                <SearchSelect
+                    testId="compat-brand-select"
+                    value={brand}
+                    placeholder="Marca"
+                    searchPlaceholder="Cerca marca…"
+                    noneLabel="—"
+                    options={brands.map((b) => ({ value: b.name, label: b.name }))}
+                    onChange={(v) => setBrand(v)}
+                />
+                <SearchSelect
+                    testId="compat-model-select"
+                    value=""
+                    disabled={!brand}
+                    placeholder={brand ? "Aggiungi modello…" : "Scegli la marca"}
+                    searchPlaceholder="Cerca modello…"
+                    sorted={false}
+                    options={[{ value: "__all__", label: `Tutti i modelli ${brand}` }, ...[...models].sort((a, b) => a.name.localeCompare(b.name, "it", { numeric: true })).map((m) => ({ value: m.name, label: m.code ? `${m.name} (${m.code})` : m.name, keywords: m.code || "" }))]}
+                    onChange={(v) => add(v === "__all__" ? `${brand} (tutti i modelli)` : `${brand} ${v}`)}
+                />
             </div>
             {value.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mt-2" data-testid="compat-chips">
@@ -168,14 +172,16 @@ function CreatableSelect({ value, onChange, options, placeholder, testId, addLab
         );
     }
     return (
-        <Select value={value || "none"} onValueChange={(v) => { if (v === NEW) { setCustom(true); onChange(""); return; } onChange(v === "none" ? "" : v); }}>
-            <SelectTrigger data-testid={testId}><SelectValue placeholder={placeholder} /></SelectTrigger>
-            <SelectContent className="max-h-72">
-                <SelectItem value="none">—</SelectItem>
-                {options.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
-                <SelectItem value={NEW} className="text-primary"><span className="flex items-center gap-1"><Plus className="h-3 w-3" /> {addLabel}</span></SelectItem>
-            </SelectContent>
-        </Select>
+        <SearchSelect
+            testId={testId}
+            value={value}
+            placeholder={placeholder}
+            searchPlaceholder="Cerca…"
+            noneLabel="—"
+            options={options.map((o) => ({ value: o, label: o }))}
+            onChange={(v) => onChange(v)}
+            actions={[{ label: addLabel, testId: `${testId}-add`, onSelect: () => { setCustom(true); onChange(""); } }]}
+        />
     );
 }
 

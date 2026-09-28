@@ -24,6 +24,7 @@ import { toast } from "sonner";
 import { currency, formatDateTime } from "@/lib/format";
 import { printSaleInvoice } from "@/lib/pdf";
 import { CustomerSelect } from "@/components/CustomerSelect";
+import { SearchSelect } from "@/components/SearchSelect";
 import { useColumnWidths, ResizableTh, ScrollTable, useTableSort, useSelection, SelectAllCheckbox, RowCheckbox, BulkBar, bulkDelete } from "@/components/ResizableTable";
 
 const COLS = ["Fattura", "Cliente", "Articoli", "Pagamento", "Totale", "Margine", "Data", "Azioni"];
@@ -226,40 +227,19 @@ export default function SalesPage() {
                                             className="grid grid-cols-12 gap-2 items-center"
                                         >
                                             <div className="col-span-5">
-                                                <Select
-                                                    value={it.part_id || "custom"}
-                                                    onValueChange={(v) => {
-                                                        if (v === "custom") {
-                                                            updateItem(i, {
-                                                                part_id: "",
-                                                            });
-                                                        } else {
-                                                            const p = parts.find(
-                                                                (x) => x.id === v,
-                                                            );
-                                                            updateItem(i, {
-                                                                part_id: v,
-                                                                description: p?.name || "",
-                                                                unit_price:
-                                                                    p?.sell_price || 0,
-                                                            });
-                                                        }
+                                                <SearchSelect
+                                                    testId={`sale-part-select-${i}`}
+                                                    value={it.part_id || ""}
+                                                    placeholder="Da magazzino…"
+                                                    searchPlaceholder="Cerca ricambio…"
+                                                    noneLabel="— Articolo libero —"
+                                                    options={parts.map((p) => ({ value: p.id, label: `${p.name}${p.brand ? ` (${p.brand})` : ""} · ${p.quantity} pz`, keywords: p.brand || "" }))}
+                                                    onChange={(v) => {
+                                                        if (!v) return updateItem(i, { part_id: "" });
+                                                        const p = parts.find((x) => x.id === v);
+                                                        updateItem(i, { part_id: v, description: p?.name || "", unit_price: p?.sell_price || 0 });
                                                     }}
-                                                >
-                                                    <SelectTrigger>
-                                                        <SelectValue placeholder="Da magazzino…" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="custom">
-                                                            — Articolo libero —
-                                                        </SelectItem>
-                                                        {parts.map((p) => (
-                                                            <SelectItem key={p.id} value={p.id}>
-                                                                {p.name} · {p.quantity} pz
-                                                            </SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
+                                                />
                                             </div>
                                             <Input
                                                 className="col-span-3"

@@ -732,15 +732,21 @@ async def get_customer(customer_id: str, user: dict = Depends(get_current_user))
 
 @api.put("/customers/{customer_id}")
 async def update_customer(customer_id: str, body: CustomerIn, user: dict = Depends(get_current_user)):
-    res = await db.customers.update_one({"id": customer_id}, {"$set": body.model_dump(exclude_unset=True)})
+    data = body.model_dump(exclude_unset=True)
+    res = await db.customers.update_one({"id": customer_id}, {"$set": data})
     if res.matched_count == 0:
         raise HTTPException(404, "Cliente non trovato")
+    if data.get("name"):
+        await db.repairs.update_many({"customer_id": customer_id}, {"$set": {"customer_name": data["name"]}})
+        await db.sales.update_many({"id": {"$exists": True}, "customer_id": customer_id}, {"$set": {"customer_name": data["name"]}})
     return clean(await db.customers.find_one({"id": customer_id}))
 
 
 @api.delete("/customers/{customer_id}")
 async def delete_customer(customer_id: str, user: dict = Depends(get_current_user)):
     await db.customers.delete_one({"id": customer_id})
+    await db.repairs.update_many({"customer_id": customer_id}, {"$set": {"customer_id": None}})
+    await db.sales.update_many({"customer_id": customer_id}, {"$set": {"customer_id": None}})
     return {"ok": True}
 
 
@@ -807,12 +813,23 @@ async def update_part(part_id: str, body: PartIn, user: dict = Depends(get_curre
     delta = int(updated.get("quantity", 0)) - int(existing.get("quantity", 0))
     if delta > 0:
         await record_part_purchase({**updated, "entered_at": None}, delta)
+    if updated.get("name") != existing.get("name"):
+        await db.repairs.update_many(
+            {"parts_used.part_id": part_id},
+            {"$set": {"parts_used.$[p].part_name": updated["name"]}},
+            array_filters=[{"p.part_id": part_id}],
+        )
+    if updated.get("entered_at") and updated.get("entered_at") != existing.get("entered_at"):
+        movs = await db.cash_movements.find({"reference_id": part_id, "category": "acquisto_ricambi"}).to_list(50)
+        if len(movs) == 1:
+            await db.cash_movements.update_one({"id": movs[0]["id"]}, {"$set": {"date": updated["entered_at"]}})
     return clean(updated)
 
 
 @api.delete("/parts/{part_id}")
 async def delete_part(part_id: str, user: dict = Depends(get_current_user)):
     await db.parts.delete_one({"id": part_id})
+    await db.purchase_orders.update_many({"items.part_id": part_id}, {"$set": {"items.$[i].part_id": None}}, array_filters=[{"i.part_id": part_id}])
     return {"ok": True}
 
 
@@ -887,6 +904,10 @@ async def update_repair(repair_id: str, body: RepairUpdate, user: dict = Depends
         await apply_parts_stock_delta(existing.get("parts_used", []), updated.get("parts_used", []))
     if data.get("status") == "annullata" and existing.get("status") != "annullata":
         await apply_parts_stock_delta(updated.get("parts_used", []), [])
+    if updated.get("delivered_at") and updated.get("delivered_at") != existing.get("delivered_at"):
+        await db.cash_movements.update_many({"reference_id": repair_id, "category": "riparazione"}, {"$set": {"date": updated["delivered_at"]}})
+    if any(k in data for k in ("device_brand", "device_model")):
+        await db.cash_movements.update_many({"reference_id": repair_id, "category": "riparazione"}, {"$set": {"description": repair_cash_description(updated)}})
 
     # Se consegnata e pagata registra la cassa (se non già presente)
     if updated.get("status") == "consegnata" and updated.get("paid"):
@@ -898,6 +919,7 @@ async def update_repair(repair_id: str, body: RepairUpdate, user: dict = Depends
                 amount=float(updated["final_price"]),
                 description=repair_cash_description(updated),
                 reference_id=repair_id,
+                date=updated.get("delivered_at") or now_iso(),
             )
             await db.cash_movements.insert_one(mov.model_dump())
     return updated
@@ -910,6 +932,7 @@ async def delete_repair(repair_id: str, user: dict = Depends(get_current_user)):
         await apply_parts_stock_delta(existing.get("parts_used", []), [])
     await db.repairs.delete_one({"id": repair_id})
     await db.cash_movements.delete_many({"reference_id": repair_id})
+    await db.refurbished.update_many({"repair_id": repair_id}, {"$set": {"repair_id": None}})
     return {"ok": True}
 
 
@@ -966,7 +989,9 @@ async def update_sale(sale_id: str, body: SaleUpdate, user: dict = Depends(get_c
         await db.refurbished.update_many({"sale_id": sale_id}, {"$set": {"sold_at": new_date}})
     if data:
         await db.sales.update_one({"id": sale_id}, {"$set": data})
-    return clean(await db.sales.find_one({"id": sale_id}))
+    fresh = await db.sales.find_one({"id": sale_id})
+    await db.cash_movements.update_many({"reference_id": sale_id, "category": "vendita"}, {"$set": {"description": sale_cash_description(fresh)}})
+    return clean(fresh)
 
 
 @api.get("/sales/{sale_id}")
@@ -981,6 +1006,10 @@ async def get_sale(sale_id: str, user: dict = Depends(get_current_user)):
 async def delete_sale(sale_id: str, user: dict = Depends(get_current_user)):
     await db.sales.delete_one({"id": sale_id})
     await db.cash_movements.delete_many({"reference_id": sale_id})
+    await db.refurbished.update_many(
+        {"sale_id": sale_id},
+        {"$set": {"sale_id": None, "status": "pronto", "sale_price": 0.0, "sold_at": None, "updated_at": now_iso()}},
+    )
     return {"ok": True}
 
 
@@ -1050,8 +1079,9 @@ async def sync_repairs_cash(stats: dict):
         mov = await db.cash_movements.find_one({"reference_id": rep["id"], "category": "riparazione"})
         if mov:
             desc = repair_cash_description(rep)
-            if mov.get("description") != desc:
-                await db.cash_movements.update_one({"id": mov["id"]}, {"$set": {"description": desc}})
+            want_date = rep.get("delivered_at") or mov["date"]
+            if mov.get("description") != desc or mov.get("date") != want_date:
+                await db.cash_movements.update_one({"id": mov["id"]}, {"$set": {"description": desc, "date": want_date}})
             continue
         m = CashMovement(type="entrata", category="riparazione", amount=float(rep["final_price"]),
                          description=repair_cash_description(rep), reference_id=rep["id"],
@@ -1062,7 +1092,10 @@ async def sync_repairs_cash(stats: dict):
 
 async def sync_parts_cash(stats: dict):
     async for part in db.parts.find({"cost_price": {"$gt": 0}, "quantity": {"$gt": 0}}):
-        if await db.cash_movements.find_one({"reference_id": part["id"], "category": "acquisto_ricambi"}):
+        movs = await db.cash_movements.find({"reference_id": part["id"], "category": "acquisto_ricambi"}).to_list(50)
+        if movs:
+            if len(movs) == 1 and part.get("entered_at") and movs[0].get("date") != part["entered_at"]:
+                await db.cash_movements.update_one({"id": movs[0]["id"]}, {"$set": {"date": part["entered_at"]}})
             continue
         await record_part_purchase({**part, "entered_at": part.get("entered_at") or part.get("created_at")}, int(part["quantity"]))
         stats["parts_added"] += 1
@@ -1678,6 +1711,10 @@ async def cash_reference(mov_id: str, user: dict = Depends(get_current_user)):
 
 
 # ---------- Backup ----------
+MODEL_BY_COLLECTION = {
+    "customers": Customer, "parts": Part, "repairs": Repair, "sales": Sale, "cash_movements": CashMovement,
+    "suppliers": Supplier, "purchase_orders": PurchaseOrder, "refurbished": Refurbished, "services": Service,
+}
 BACKUP_COLLECTIONS = ["customers", "parts", "repairs", "sales", "cash_movements", "suppliers", "purchase_orders",
                       "refurbished", "device_brands", "device_models", "services", "part_templates", "counters"]
 
@@ -1721,6 +1758,96 @@ async def merge_collection(name: str, docs: list) -> int:
             await db[name].replace_one(key, dict(d), upsert=True)
             n += 1
     return n
+
+
+REQUIRED_FIELDS = {
+    "customers": ["name"], "parts": ["name"], "repairs": ["ticket_number", "device_type", "problem"],
+    "sales": ["invoice_number", "items", "total"], "cash_movements": ["type", "category", "amount", "date"],
+    "refurbished": ["code", "device_type"], "device_brands": ["name"], "device_models": ["brand", "name"],
+    "services": ["name", "price"], "part_templates": ["name"], "suppliers": ["name"], "purchase_orders": ["order_number", "items"],
+}
+ENUMS = {
+    "repairs": {"status": ["in_attesa", "in_lavorazione", "completata", "consegnata", "annullata"]},
+    "cash_movements": {"type": ["entrata", "uscita"]},
+    "refurbished": {"status": ["acquistato", "in_ricondizionamento", "pronto", "venduto"]},
+    "purchase_orders": {"status": ["bozza", "ordinato", "parziale", "ricevuto", "annullato"]},
+    "parts": {"condition": ["nuovo", "usato", "ricondizionato"], "status": ["disponibile", "in_uso", "difettoso", "esaurito"]},
+}
+NUMERIC_FIELDS = {
+    "parts": ["quantity", "cost_price", "sell_price"], "repairs": ["estimate", "final_price", "labor_cost"],
+    "sales": ["total", "cost_total", "margin"], "cash_movements": ["amount"], "refurbished": ["purchase_cost", "target_price", "sale_price"],
+    "services": ["price"],
+}
+REFERENCES = {
+    "repairs": [("customer_id", "customers")],
+    "sales": [("customer_id", "customers")],
+    "refurbished": [("repair_id", "repairs"), ("sale_id", "sales")],
+}
+
+
+def issue(coll, idx, doc, field, msg, severity="error"):
+    return {"collection": coll, "index": idx, "id": doc.get("id") if isinstance(doc, dict) else None,
+            "field": field, "message": msg, "severity": severity}
+
+
+def validate_doc(coll: str, idx: int, d, seen_ids: set, issues: list):
+    if not isinstance(d, dict):
+        issues.append(issue(coll, idx, {}, None, "Il record non è un oggetto"))
+        return
+    if coll != "counters":
+        if not d.get("id"):
+            issues.append(issue(coll, idx, d, "id", "Manca l'identificativo"))
+        elif d["id"] in seen_ids:
+            issues.append(issue(coll, idx, d, "id", "Identificativo duplicato nel backup"))
+        seen_ids.add(d.get("id"))
+    for f in REQUIRED_FIELDS.get(coll, []):
+        if d.get(f) in (None, "", []):
+            issues.append(issue(coll, idx, d, f, f"Campo obbligatorio mancante: {f}"))
+    for f, allowed in ENUMS.get(coll, {}).items():
+        if d.get(f) is not None and d[f] not in allowed:
+            issues.append(issue(coll, idx, d, f, f"Valore '{d[f]}' non valido (ammessi: {', '.join(allowed)})"))
+    for f in NUMERIC_FIELDS.get(coll, []):
+        v = d.get(f)
+        if v is not None and not isinstance(v, (int, float)):
+            issues.append(issue(coll, idx, d, f, f"Valore non numerico: {v!r}"))
+    model = MODEL_BY_COLLECTION.get(coll)
+    if model:
+        unknown = [k for k in d if k not in model.model_fields and k != "_id"]
+        if unknown:
+            issues.append(issue(coll, idx, d, ",".join(unknown), f"Campi sconosciuti (verranno ignorati): {', '.join(unknown)}", "warning"))
+
+
+async def validate_references(collections: dict, issues: list):
+    for coll, refs in REFERENCES.items():
+        docs = collections.get(coll) or []
+        for field, target in refs:
+            ids_in_backup = {x.get("id") for x in (collections.get(target) or []) if isinstance(x, dict)}
+            for idx, d in enumerate(docs):
+                ref = d.get(field) if isinstance(d, dict) else None
+                if ref and ref not in ids_in_backup and not await db[target].find_one({"id": ref}):
+                    issues.append(issue(coll, idx, d, field, f"Riferimento a {target} inesistente ({ref})", "warning"))
+
+
+@api.post("/backup/validate")
+async def validate_backup(body: BackupIn, user: dict = Depends(get_current_user)):
+    unknown = [k for k in body.collections if k not in BACKUP_COLLECTIONS]
+    issues = [{"collection": k, "index": None, "id": None, "field": None, "message": "Collezione sconosciuta: verrà ignorata", "severity": "warning"} for k in unknown]
+    for coll, docs in body.collections.items():
+        if coll in unknown:
+            continue
+        if not isinstance(docs, list):
+            issues.append({"collection": coll, "index": None, "id": None, "field": None, "message": "Formato non valido (atteso elenco)", "severity": "error"})
+            continue
+        seen: set = set()
+        for idx, d in enumerate(docs):
+            validate_doc(coll, idx, d, seen, issues)
+    await validate_references({k: v for k, v in body.collections.items() if isinstance(v, list)}, issues)
+    return {
+        "ok": not any(i["severity"] == "error" for i in issues),
+        "errors": sum(1 for i in issues if i["severity"] == "error"),
+        "warnings": sum(1 for i in issues if i["severity"] == "warning"),
+        "issues": issues[:500],
+    }
 
 
 @api.post("/backup/import")

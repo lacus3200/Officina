@@ -2,7 +2,9 @@ import React, { useRef, useState } from "react";
 import { api, formatApiError } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Download, Upload, DatabaseBackup, AlertTriangle } from "lucide-react";
+import { Download, Upload, DatabaseBackup, AlertTriangle, ShieldCheck } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { formatDateTime } from "@/lib/format";
 
@@ -16,6 +18,44 @@ export default function SettingsPage() {
     const [busy, setBusy] = useState(false);
     const [preview, setPreview] = useState(null);
     const [mode, setMode] = useState("replace");
+    const [review, setReview] = useState(null);
+    const [excluded, setExcluded] = useState(new Set());
+    const [editing, setEditing] = useState(null);
+
+    const validate = async (collections) => {
+        try {
+            const { data } = await api.post("/backup/validate", { collections, mode: "merge" });
+            setReview(data);
+            const errKeys = new Set(data.issues.filter((i) => i.severity === "error" && i.index !== null).map((i) => `${i.collection}:${i.index}`));
+            setExcluded(errKeys);
+            return data;
+        } catch (e) {
+            toast.error(formatApiError(e));
+            return null;
+        }
+    };
+
+    const applyEdit = () => {
+        try {
+            const doc = JSON.parse(editing.text);
+            const cols = { ...preview.collections, [editing.collection]: preview.collections[editing.collection].map((d, i) => (i === editing.index ? doc : d)) };
+            setPreview({ ...preview, collections: cols });
+            setEditing(null);
+            validate(cols);
+            toast.success("Record aggiornato, dati ricontrollati");
+        } catch {
+            toast.error("JSON non valido");
+        }
+    };
+
+    const cleanedCollections = () => {
+        const out = {};
+        Object.entries(preview.collections).forEach(([k, docs]) => {
+            if (!Array.isArray(docs) || !LABELS[k]) return;
+            out[k] = docs.filter((_, i) => !excluded.has(`${k}:${i}`));
+        });
+        return out;
+    };
     const fileRef = useRef();
 
     const exportBackup = async () => {
@@ -44,6 +84,7 @@ export default function SettingsPage() {
             const json = JSON.parse(await f.text());
             if (!json.collections) throw new Error("File non valido: manca 'collections'");
             setPreview({ name: f.name, exported_at: json.exported_at, collections: json.collections });
+            await validate(json.collections);
         } catch (err) {
             toast.error(err.message || "File non valido");
         }
@@ -56,9 +97,11 @@ export default function SettingsPage() {
             : "I dati del backup verranno uniti a quelli attuali (sovrascrivendo gli stessi ID). Continuare?")) return;
         setBusy(true);
         try {
-            const { data } = await api.post("/backup/import", { collections: preview.collections, mode });
-            toast.success(`Backup ripristinato: ${Object.values(data.imported).reduce((a, b) => a + b, 0)} record`);
+            const { data } = await api.post("/backup/import", { collections: cleanedCollections(), mode });
+            toast.success(`Backup ripristinato: ${Object.values(data.imported).reduce((a, b) => a + b, 0)} record${excluded.size ? ` (${excluded.size} esclusi)` : ""}`);
             setPreview(null);
+            setReview(null);
+            setExcluded(new Set());
         } catch (e) {
             toast.error(formatApiError(e));
         } finally {
@@ -107,6 +150,42 @@ export default function SettingsPage() {
                                     <div key={k} className="flex justify-between border-b border-border/40 py-1"><span className="text-muted-foreground">{LABELS[k] || k}</span><span className="font-mono">{Array.isArray(v) ? v.length : "?"}</span></div>
                                 ))}
                             </div>
+                            {review && (
+                                <div className={`rounded-md border p-3 space-y-2 ${review.errors ? "border-red-800 bg-red-950/30" : review.warnings ? "border-amber-800 bg-amber-950/30" : "border-emerald-800 bg-emerald-950/30"}`} data-testid="backup-review">
+                                    <div className="flex items-center gap-2 text-sm font-medium" data-testid="backup-review-summary">
+                                        {review.errors ? <AlertTriangle className="h-4 w-4 text-red-400" /> : <ShieldCheck className="h-4 w-4 text-emerald-400" />}
+                                        {review.errors === 0 && review.warnings === 0
+                                            ? "Nessuna incompatibilità rilevata"
+                                            : `${review.errors} errori · ${review.warnings} avvisi — i record con errori sono esclusi dall'importazione, puoi revisionarli`}
+                                    </div>
+                                    {review.issues.length > 0 && (
+                                        <div className="max-h-64 overflow-auto divide-y divide-border/40 text-xs">
+                                            {review.issues.map((it, n) => {
+                                                const key = `${it.collection}:${it.index}`;
+                                                const hasDoc = it.index !== null && it.index !== undefined;
+                                                return (
+                                                    <div key={n} className="flex items-center gap-2 py-1.5" data-testid={`backup-issue-${n}`}>
+                                                        <span className={`px-1.5 rounded ${it.severity === "error" ? "bg-red-900/60 text-red-200" : "bg-amber-900/60 text-amber-200"}`}>{it.severity === "error" ? "errore" : "avviso"}</span>
+                                                        <span className="text-muted-foreground shrink-0">{LABELS[it.collection] || it.collection}{hasDoc ? ` #${it.index + 1}` : ""}{it.id ? ` (${it.id.slice(0, 8)})` : ""}</span>
+                                                        <span className="flex-1 truncate" title={it.message}>{it.field ? <b>{it.field}: </b> : null}{it.message}</span>
+                                                        {hasDoc && (
+                                                            <>
+                                                                <label className="flex items-center gap-1 cursor-pointer shrink-0">
+                                                                    <input type="checkbox" checked={excluded.has(key)} onChange={() => setExcluded((p) => { const n2 = new Set(p); n2.has(key) ? n2.delete(key) : n2.add(key); return n2; })} data-testid={`backup-exclude-${it.collection}-${it.index}`} />
+                                                                    escludi
+                                                                </label>
+                                                                <button className="text-primary hover:underline shrink-0" onClick={() => setEditing({ collection: it.collection, index: it.index, text: JSON.stringify(preview.collections[it.collection][it.index], null, 2) })} data-testid={`backup-edit-${it.collection}-${it.index}`}>
+                                                                    modifica
+                                                                </button>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                             <div className="flex flex-wrap gap-2 items-center">
                                 <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" checked={mode === "replace"} onChange={() => setMode("replace")} data-testid="mode-replace" /> Sostituisci tutto</label>
                                 <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" checked={mode === "merge"} onChange={() => setMode("merge")} data-testid="mode-merge" /> Unisci ai dati attuali</label>
@@ -116,12 +195,22 @@ export default function SettingsPage() {
                             )}
                             <div className="flex gap-2">
                                 <Button onClick={doImport} disabled={busy} data-testid="confirm-import-button"><DatabaseBackup className="h-4 w-4 mr-2" /> Ripristina</Button>
-                                <Button variant="ghost" onClick={() => setPreview(null)}>Annulla</Button>
+                                <Button variant="ghost" onClick={() => { setPreview(null); setReview(null); }}>Annulla</Button>
                             </div>
                         </div>
                     )}
                 </CardContent>
             </Card>
+            <Dialog open={!!editing} onOpenChange={(v) => !v && setEditing(null)}>
+                <DialogContent className="bg-card border-border max-w-2xl" data-testid="backup-edit-dialog">
+                    <DialogHeader><DialogTitle>Revisiona record {editing ? `${LABELS[editing.collection] || editing.collection} #${editing.index + 1}` : ""}</DialogTitle></DialogHeader>
+                    <Textarea className="font-mono text-xs min-h-[320px]" value={editing?.text || ""} onChange={(e) => setEditing({ ...editing, text: e.target.value })} data-testid="backup-edit-textarea" />
+                    <div className="flex gap-2 justify-end">
+                        <Button variant="ghost" onClick={() => setEditing(null)}>Annulla</Button>
+                        <Button onClick={applyEdit} data-testid="backup-edit-save">Applica e ricontrolla</Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

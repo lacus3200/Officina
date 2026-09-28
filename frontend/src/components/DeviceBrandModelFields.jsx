@@ -4,11 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus } from "lucide-react";
+import { SearchSelect } from "@/components/SearchSelect";
 import { toast } from "sonner";
 
-const NEW = "__new__";
 
 export function DeviceBrandModelFields({ brand, model, onChange, deviceType }) {
     const [brands, setBrands] = useState([]);
@@ -48,44 +46,30 @@ export function DeviceBrandModelFields({ brand, model, onChange, deviceType }) {
         <>
             <div>
                 <Label className="eyebrow">Marca</Label>
-                <Select
-                    value={brand || "none"}
-                    onValueChange={(v) => {
-                        if (v === NEW) { setDraft({ name: "", code: "" }); setDialog("brand"); return; }
-                        onChange({ brand: v === "none" ? "" : v, model: "" });
-                    }}
-                >
-                    <SelectTrigger data-testid="device-brand-select"><SelectValue placeholder="Marca" /></SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="none">—</SelectItem>
-                        {!brandKnown && <SelectItem value={brand}>{brand}</SelectItem>}
-                        {brands.map((b) => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}
-                        <SelectItem value={NEW} className="text-primary"><span className="flex items-center gap-1"><Plus className="h-3 w-3" /> Aggiungi marca…</span></SelectItem>
-                    </SelectContent>
-                </Select>
+                <SearchSelect
+                    testId="device-brand-select"
+                    value={brand}
+                    placeholder="Marca"
+                    searchPlaceholder="Cerca marca…"
+                    noneLabel="—"
+                    options={[...brands.map((b) => ({ value: b.name, label: b.name })), ...(!brandKnown ? [{ value: brand, label: brand }] : [])]}
+                    onChange={(v) => onChange({ brand: v, model: "" })}
+                    actions={[{ label: "Aggiungi marca…", testId: "device-brand-add", onSelect: () => { setDraft({ name: "", code: "" }); setDialog("brand"); } }]}
+                />
             </div>
             <div>
                 <Label className="eyebrow">Modello</Label>
-                <Select
-                    value={model || "none"}
+                <SearchSelect
+                    testId="device-model-select"
+                    value={model}
                     disabled={!brand}
-                    onValueChange={(v) => {
-                        if (v === NEW) { setDraft({ name: "", code: "" }); setDialog("model"); return; }
-                        onChange({ brand, model: v === "none" ? "" : v });
-                    }}
-                >
-                    <SelectTrigger data-testid="device-model-select"><SelectValue placeholder={brand ? "Modello" : "Scegli prima la marca"} /></SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="none">—</SelectItem>
-                        {!modelKnown && <SelectItem value={model}>{model}</SelectItem>}
-                        {models.map((m) => (
-                            <SelectItem key={m.id} value={m.name}>
-                                {m.name}{m.code ? <span className="text-muted-foreground"> ({m.code})</span> : null}
-                            </SelectItem>
-                        ))}
-                        <SelectItem value={NEW} className="text-primary"><span className="flex items-center gap-1"><Plus className="h-3 w-3" /> Aggiungi modello…</span></SelectItem>
-                    </SelectContent>
-                </Select>
+                    placeholder={brand ? "Modello" : "Scegli prima la marca"}
+                    searchPlaceholder="Cerca modello o codice…"
+                    noneLabel="—"
+                    options={[...models.map((m) => ({ value: m.name, label: m.code ? `${m.name} (${m.code})` : m.name, keywords: m.code || "" })), ...(!modelKnown ? [{ value: model, label: model }] : [])]}
+                    onChange={(v) => onChange({ brand, model: v })}
+                    actions={brand ? [{ label: "Aggiungi modello…", testId: "device-model-add", onSelect: () => { setDraft({ name: "", code: "" }); setDialog("model"); } }] : []}
+                />
             </div>
 
             <Dialog open={!!dialog} onOpenChange={(v) => !v && setDialog(null)}>
