@@ -360,6 +360,7 @@ export default function InventoryPage() {
                 </button>
             </div>
             <PartCatalogManager open={manageOpen} onOpenChange={setManageOpen} onChanged={load} />
+            <BulkBar count={sel.selected.size} onDelete={removeSelected} onClear={sel.clear} label="ricambi" busy={bulkBusy} />
 
             <Card>
                 <CardContent className="p-0">

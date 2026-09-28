@@ -1,0 +1,37 @@
+{
+  "summary": "Iter12 testing (both): (Backend) added tests/test_iter12_rename_delete_wipe_purchase_date.py with 11 new tests covering brand rename+404+400+propagation to device_models/repairs/refurbished/parts.compatible_models; model rename propagation; color rename & delete (new=null) propagation to refurbished.color; part-categories delete+rename; part-brands rename & clear-with-empty; refurbished POST with purchase_date sets cash_movements.date to that date (2026-01-05 verified); backup/wipe 400 on wrong confirm + full roundtrip via /backup/export -> /backup/wipe -> /backup/import replace with count parity assertion; services rename+delete. Full backend suite 101/101 passing (up from 90). (Frontend) Playwright E2E: login OK; created brand via API 'TESTBrandX', opened Nuova riparazione, opened device-brand-select, searched 'TESTB', clicked device-brand-select-rename-TESTBrandX with prompt->'TESTBrandY' -> toast 'Marca aggiornata' and list showed new name; clicked device-brand-select-delete-TESTBrandY (accept confirm) -> option removed. On /ricondizionati: created 2 refurb via API (one with purchase_date=2026-01-05, cost=50 - card shows 'Acquistato il 05/01/2026' verified in DOM), checkboxes refurbished-select-{id} both selectable, refurbished-select-all checks both, bulk-bar shows '2 dispositivi selezionati', bulk-delete-button works and cards disappear. On /impostazioni: wipe-button starts disabled, stays disabled with 'no', becomes enabled ONLY when input == 'ELIMINA'; export-backup-button and wipe-catalogs-checkbox present (real wipe NOT executed on preview; wipe API tested at backend level via roundtrip). Regression finding: on /magazzino, inventory-select-{id} checkboxes work but BulkBar is IMPORTED but NEVER RENDERED in InventoryPage.jsx, so bulk-delete-button never appears - `removeSelected` is defined (line 71-79) and BulkBar is imported (line 28) but no JSX renders it. All TEST_* data cleaned up (verified via API listings).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "InventoryPage.jsx", "issue": "BulkBar is imported but not rendered - the inventory checkboxes work (inventory-select-{id}, inventory-select-all) and removeSelected/bulkBusy state exist, but no <BulkBar count={sel.selected.size} onDelete={removeSelected} onClear={sel.clear} label='ricambi' busy={bulkBusy} /> is placed in JSX. Impact: users can't perform bulk delete on Magazzino (regression vs Ricondizionati which renders BulkBar correctly).", "selector": "[data-testid=\"bulk-delete-button\"] on /magazzino", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter12_rename_delete_wipe_purchase_date.py",
+    "/app/test_reports/pytest/iter12.xml"
+  ],
+  "action_items": [
+    "Render <BulkBar count={sel.selected.size} onDelete={removeSelected} onClear={sel.clear} label=\"ricambi\" busy={bulkBusy} /> in /app/frontend/src/pages/InventoryPage.jsx (e.g., above the search/filters row similar to RefurbishedPage.jsx line 106) to restore Magazzino bulk-delete functionality."
+  ],
+  "critical_code_review_comments": [
+    "SearchSelect.jsx correctly emits data-testid `{testId}-rename-{value}` and `{testId}-delete-{value}` and uses onPointerDown/onClick stopPropagation so the row select is not triggered - clean UX; prompt/confirm are native (as spec).",
+    "server.py rename_brand (1505-1522) properly propagates to device_models.brand, repairs.device_brand, refurbished.brand, parts.compatible_models via regex prefix; 404 and 400 covered.",
+    "server.py rename_or_delete_color (1598-1611) uses $pull then $addToSet - safely handles both rename and delete (new=None); refurbished.color update via update_many.",
+    "server.py wipe_data (1945-1958) requires confirm=='ELIMINA' (400 otherwise), operational vs catalogs split correctly, and re-seeds catalogs when include_catalogs=True.",
+    "server.py refurbished POST correctly propagates obj.purchase_date to cash_movements.date (line 1334) - test_refurb_purchase_date_sets_cash_date passes.",
+    "InventoryPage.jsx has UNUSED IMPORT `BulkBar` (line 28) and unreferenced `removeSelected` handler (lines 71-79) - dead code path indicating the wiring was forgotten; should either render BulkBar or remove the dead code.",
+    "server.py still 2101 lines - carry-over: consider splitting into routers modules (customers/parts/repairs/sales/refurb/backup/catalog).",
+    "SettingsPage.jsx wipe section correctly disables the button until wipeText==='ELIMINA' and uses window.confirm for extra safety - good.",
+    "RefurbFormDialog.jsx sets purchase_date default to today's date via new Date().toISOString().slice(0,10) - correct behavior."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter12_rename_delete_wipe_purchase_date.py"],
+  "success_rate": {"backend": "100% (101/101)", "frontend": "95% - Magazzino bulk-delete missing render"},
+  "test_credentials": "admin@lab.local / admin123 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "TEST brands/models/refurb/parts/services created and cleaned via API in each test; UI test brand TESTBrandX renamed to TESTBrandY then deleted; 2 refurb TEST devices bulk-deleted through UI; 2 TEST_bulk parts cleaned via API DELETE. Final catalog listings verified empty of TEST_ items.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && python -m pytest tests -q -n 0 (currently 101 passing). One frontend regression to retest after main agent fixes: on /magazzino, select 2+ parts via inventory-select-{id} then click [data-testid='bulk-delete-button']; must succeed and both parts must vanish. All other iter12 flows (SearchSelect rename/delete icons across all supported selects, refurbished bulk & purchase_date->cash date, wipe input gating, wipe roundtrip) already verified end-to-end.",
+  "rca of the issue": "InventoryPage.jsx: import { ..., BulkBar, bulkDelete } was added and the removeSelected() handler was written, but the JSX render of <BulkBar .../> was never added (likely a copy-paste miss vs RefurbishedPage.jsx line 106 where it is rendered). Fix: place BulkBar in JSX above the search bar or above the table (mirroring RefurbishedPage). No backend change required."
+}

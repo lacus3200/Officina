@@ -132,6 +132,16 @@
   riparazione (unlink ricondizionato), elimina vendita (ricondizionato → pronto), marca/modello → cassa
 - ✅ Test iteration_11: backend 90/90 (usare `pytest -n 0`), frontend E2E OK.
 
+## Implemented (2026-06 — sessione 9)
+- ✅ Rinomina/Elimina voci direttamente nei menu a tendina (marche, modelli, colori, categorie e
+  marche ricambio, catalogo nomi ricambio, interventi, clienti) con propagazione backend
+  (PUT /catalog/brands/{id}, /catalog/models/{id}, /catalog/models/{id}/colors,
+  /catalog/part-categories/delete, /catalog/part-brands/rename)
+- ✅ Backup: "Cancella tutti i dati" (POST /backup/wipe, conferma ELIMINA, opzione cataloghi con reseed)
+- ✅ Selezione multipla + elimina su Ricondizionati (card) e fix BulkBar Magazzino non renderizzata
+- ✅ Data acquisto nel form Ricondizionato (propagata alla cassa)
+- ✅ Test iteration_12: backend 101/101, frontend E2E OK.
+
 ## Backlog (P1/P2)
 - P1 Filtri per data su report (settimana/mese/trimestre/anno)
 - P1 Riordino rapido da "sotto scorta" → crea ordine precompilato al fornitore
