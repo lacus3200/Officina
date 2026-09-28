@@ -110,6 +110,17 @@
   fixture condivise (client, temp_part, cash_for), test complessi spezzati in casi singoli
 - ✅ Suite 69/69 + regressione iteration_9 OK
 
+## Implemented (2026-06 — sessione 7)
+- ✅ Tutte le tabelle: ricerca (anche Vendite e Cassa), ordinamento per colonna (click header),
+  selezione multipla con checkbox + "Elimina selezionati" (hook useTableSort/useSelection, BulkBar)
+- ✅ Scarico automatico giacenza ricambi usati in riparazione (create/update delta, annulla/elimina ripristina)
+- ✅ Nome ricambio come combobox con ricerca testuale (Command/Popover)
+- ✅ Data vendita inseribile/modificabile (POST /sales date, PUT /sales/{id}); data/prezzo vendita
+  ricondizionato modificabili (propagati a vendita e cassa)
+- ✅ Descrizioni cassa con articolo/dispositivo (sync aggiorna le esistenti)
+- ✅ Menu laterale mobile scrollabile
+- ✅ Test iteration_10: backend 81/81, frontend E2E OK.
+
 ## Backlog (P1/P2)
 - P1 Filtri per data su report (settimana/mese/trimestre/anno)
 - P1 Riordino rapido da "sotto scorta" → crea ordine precompilato al fornitore
