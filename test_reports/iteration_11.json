@@ -1,0 +1,25 @@
+{
+  "summary": "Iter11 testing: backup validate/import with issue review + per-record exclusion + JSON edit, SearchSelect combobox rollout across all forms, cash-date sources (repair delivered_at, part entered_at) with propagation on edits, and cross-entity propagation (customer rename/delete -> repairs+sales; part rename -> parts_used.part_name; repair delete -> refurb.repair_id null; sale delete -> refurb returns to 'pronto'). Added 9 pytest tests in tests/test_iter11_backup_and_propagation.py covering backup /validate error/warning classification, /import merge upserts, customer rename+delete propagation, part rename propagation, refurb<->repair/sale link nulling, repair cash date + description sync on PUT, part entered_at cash date, and /cash/sync idempotency. Full backend suite: 90/90 passing. Frontend Playwright verified: (a) repair-device-type-select opens Popover+CommandInput, options sorted alphabetically ['Altro','Console','PC / Notebook','Smartphone','Tablet','TV / Monitor'], filter 'smart'-> only 'Smartphone'; (b) device-brand-select filter 'sam' -> Samsung visible & selectable; device-model-select filter 'S23' -> Galaxy S23 (SM-S911B), S23 Ultra, S25; (c) repair-customer-select-search present; (d) sale-customer-select + sale-part-select-0 + sale-part-select-0-search + sale-part-select-0-none all present; (e) part-category-select, part-brand-select, part-category-select-add all present in Nuovo ricambio; (f) Backup import on /impostazioni: 1 file input, uploading crafted JSON -> backup-review shows 7 issues (2 errors + 3 warnings displayed + 2 sub-warnings), backup-exclude-* checkboxes checked-by-default for errors, backup-edit-* buttons present, backup-edit-dialog opens with textarea, backup-edit-save closes and re-validates (5 issues remaining after fixing to {id:TESTx2,name:'Fixed'}), confirm-import-button present. Cleanup of TEST_* customers done via API.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter11_backup_and_propagation.py",
+    "/app/test_reports/pytest/iter11.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "validate_backup (server.py:1831) correctly returns {ok, errors, warnings, issues[]} with severity per issue; unknown collections are downgraded to warnings; enum/required/duplicate-id/missing-id/unknown-field-warning all covered; references validated against both in-payload and existing DB rows.",
+    "update_customer (server.py:733-742) propagates name to repairs.customer_name AND sales.customer_name; delete_customer (745-749) sets customer_id=None on both without deleting records - matches spec.",
+    "update_part propagates renamed name to repairs.parts_used[].part_name; update_repair on delivered_at change updates cash_movements.date and on device_brand/model change updates description (server.py:907-910) - covered by test_iter11.",
+    "delete_repair sets refurbished.repair_id=None; delete_sale + sell_refurbished pair correctly restore refurb.status='pronto' and sale_id=None on delete. Verified end-to-end.",
+    "server.py still 2001 lines - consider splitting into routers/domain modules (customers/parts/repairs/sales/refurb/backup) - carried over from iter9/10.",
+    "SearchSelect (SearchSelect.jsx) is clean and reusable: data-testid on trigger/search/option/none/action + alphabetical sort with Italian collation + group support + async keyword search via `${label} ${keywords}` value trick."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter11_backup_and_propagation.py"],
+  "success_rate": {"backend": "100% (90/90)", "frontend": "100% (all data-testids and flows verified)"},
+  "test_credentials": "admin@lab.local / admin123 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Test-prefixed customers (TESTx1/TESTx2/TESTbk1/TESTbk2), parts (TEST_Vite_A/B, TEST_part_date), repairs, sales, and refurbished created and cleaned up by fixtures/tests. Verified no TEST_* customers remain via API after run.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && python -m pytest tests -q -o addopts=. Iter11 focus: backup review UI (SettingsPage), SearchSelect combobox across all forms (data-testid pattern: `{testid}`, `{testid}-search`, `{testid}-opt-{value}`, `{testid}-none`, `{testid}-add`), cash date propagation. All working."
+}

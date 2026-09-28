@@ -121,6 +121,17 @@
 - ✅ Menu laterale mobile scrollabile
 - ✅ Test iteration_10: backend 81/81, frontend E2E OK.
 
+## Implemented (2026-06 — sessione 8)
+- ✅ Backup import: POST /backup/validate (id mancanti/duplicati, campi obbligatori, enum, numerici,
+  campi sconosciuti, riferimenti); UI revisione con esclusione per record ed editor JSON + ricontrollo
+- ✅ SearchSelect (Popover+Command) in tutti i select con dati (cliente, marca/modello, colore,
+  categoria/marca ricambio, compatibilità, interventi, ricambi in riparazione/vendita, ticket, tipo
+  dispositivo); opzioni ordinate alfabeticamente
+- ✅ Date cassa coerenti: vendita=created_at, ricambio=entered_at, riparazione=delivered_at (sync corregge)
+- ✅ Propagazione cross-sezione: rinomina/elimina cliente, rinomina/elimina ricambio, elimina
+  riparazione (unlink ricondizionato), elimina vendita (ricondizionato → pronto), marca/modello → cassa
+- ✅ Test iteration_11: backend 90/90 (usare `pytest -n 0`), frontend E2E OK.
+
 ## Backlog (P1/P2)
 - P1 Filtri per data su report (settimana/mese/trimestre/anno)
 - P1 Riordino rapido da "sotto scorta" → crea ordine precompilato al fornitore
