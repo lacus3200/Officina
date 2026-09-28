@@ -100,8 +100,11 @@ export default function RepairsPage() {
     const [bulkBusy, setBulkBusy] = useState(false);
     const removeSelected = async () => {
         if (!window.confirm(`Eliminare ${sel.selected.size} riparazioni?`)) return;
+        const chosen = sorted.filter((x) => sel.selected.has(x.id));
+        const hasParts = chosen.some((r) => (r.parts_used || []).some((p) => p.part_id));
+        const restore = hasParts ? window.confirm("Alcune riparazioni hanno usato ricambi: ripristinarli in magazzino?") : false;
         setBulkBusy(true);
-        const res = await bulkDelete([...sel.selected], (id) => api.delete(`/repairs/${id}`));
+        const res = await bulkDelete([...sel.selected], (id) => api.delete(`/repairs/${id}`, { params: { restore_parts: restore } }));
         setBulkBusy(false);
         res.failed ? toast.warning(`${res.ok} eliminati, ${res.failed} non eliminabili`) : toast.success(`${res.ok} riparazioni eliminati`);
         sel.clear();

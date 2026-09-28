@@ -24,6 +24,7 @@ import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { IntegrityAlert } from "@/components/IntegrityAlert";
 
 const Kpi = ({ label, value, icon: Icon, tint = "amber", testId, sub }) => (
     <motion.div
@@ -108,6 +109,8 @@ export default function DashboardPage() {
                     </Link>
                 </div>
             </div>
+
+            <IntegrityAlert />
 
             {/* KPI grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

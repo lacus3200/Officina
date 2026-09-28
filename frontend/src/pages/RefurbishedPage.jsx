@@ -9,6 +9,7 @@ import { currency, formatDate, REFURB_STATUS } from "@/lib/format";
 import { StatusBadge } from "@/components/StatusBadge";
 import { RefurbFormDialog } from "@/components/refurbished/RefurbFormDialog";
 import { RefurbDetailDialog } from "@/components/refurbished/RefurbDetailDialog";
+import { RefurbDeleteDialog } from "@/components/refurbished/RefurbDeleteDialog";
 import { useSelection, BulkBar, bulkDelete, SelectAllCheckbox } from "@/components/ResizableTable";
 
 const ICONS = { Smartphone: Smartphone, "PC / Notebook": Laptop, Tablet: Tablet, "TV / Monitor": Monitor };
@@ -23,12 +24,14 @@ export default function RefurbishedPage() {
     const [detail, setDetail] = useState(null);
     const sel = useSelection(items);
     const [bulkBusy, setBulkBusy] = useState(false);
-    const removeSelected = async () => {
-        if (!window.confirm(`Eliminare ${sel.selected.size} dispositivi e i relativi movimenti di cassa?`)) return;
+    const [toDelete, setToDelete] = useState(null);
+    const removeSelected = () => setToDelete(items.filter((x) => sel.selected.has(x.id)));
+    const confirmDelete = async (opts) => {
         setBulkBusy(true);
-        const res = await bulkDelete([...sel.selected], (id) => api.delete(`/refurbished/${id}`));
+        const res = await bulkDelete(toDelete.map((x) => x.id), (id) => api.delete(`/refurbished/${id}`, { params: opts }));
         setBulkBusy(false);
-        res.failed ? toast.warning(`${res.ok} eliminati, ${res.failed} non eliminabili`) : toast.success(`${res.ok} dispositivi eliminati`);
+        setToDelete(null);
+        res.failed ? toast.warning(`${res.ok} eliminati, ${res.failed} non eliminabili`) : toast.success(res.ok === 1 ? "Dispositivo eliminato" : `${res.ok} dispositivi eliminati`);
         sel.clear();
         load();
     };
@@ -51,18 +54,9 @@ export default function RefurbishedPage() {
         // eslint-disable-next-line
     }, [q, status]);
 
-    const remove = async (id) => {
-        if (!window.confirm("Eliminare il dispositivo e i relativi movimenti di cassa?")) return;
+    const remove = (id) => {
         const it = items.find((x) => x.id === id);
-        const deleteSale = it?.sale_id ? window.confirm("Il dispositivo è stato venduto: eliminare anche la vendita collegata (e il relativo incasso)?") : false;
-        const restore = it?.repair?.parts_used?.some((p) => p.part_id) ? window.confirm("La riparazione collegata ha usato ricambi: ripristinarli in magazzino?") : false;
-        try {
-            await api.delete(`/refurbished/${id}`, { params: { delete_sale: deleteSale, restore_parts: restore } });
-            toast.success("Dispositivo eliminato");
-            load();
-        } catch (e) {
-            toast.error(formatApiError(e));
-        }
+        if (it) setToDelete([it]);
     };
 
     return (
@@ -193,6 +187,7 @@ export default function RefurbishedPage() {
 
             <RefurbFormDialog open={formOpen} onOpenChange={setFormOpen} editing={editing} onSaved={load} />
             <RefurbDetailDialog item={detail} onOpenChange={(v) => !v && setDetail(null)} onChanged={load} />
+            <RefurbDeleteDialog items={toDelete} open={!!toDelete} onClose={() => setToDelete(null)} onConfirm={confirmDelete} busy={bulkBusy} />
         </div>
     );
 }

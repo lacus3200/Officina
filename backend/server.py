@@ -834,6 +834,7 @@ async def update_part(part_id: str, body: PartIn, user: dict = Depends(get_curre
 @api.delete("/parts/{part_id}")
 async def delete_part(part_id: str, user: dict = Depends(get_current_user)):
     await db.parts.delete_one({"id": part_id})
+    await db.cash_movements.update_many({"reference_id": part_id}, {"$set": {"reference_id": None}})
     await db.purchase_orders.update_many({"items.part_id": part_id}, {"$set": {"items.$[i].part_id": None}}, array_filters=[{"i.part_id": part_id}])
     return {"ok": True}
 
@@ -856,14 +857,18 @@ async def list_repairs(user: dict = Depends(get_current_user), status: Optional[
     return [clean(i) for i in items]
 
 
-async def sync_refurb_sale_cost(repair_id: str):
+async def sync_refurb_sale_cost(repair_id: str) -> list:
+    warnings = []
     ref = await db.refurbished.find_one({"repair_id": repair_id, "status": "venduto"})
     if ref and ref.get("sale_id"):
         enriched = await enrich_refurb(ref)
-        await db.sales.update_one(
+        res = await db.sales.update_one(
             {"id": ref["sale_id"]},
             {"$set": {"cost_total": enriched["total_cost"], "margin": round(float(ref["sale_price"]) - enriched["total_cost"], 2)}},
         )
+        if res.matched_count == 0:
+            warnings.append(f"Vendita del ricondizionato {ref['code']} non trovata: costo/margine non aggiornati")
+    return warnings
 
 
 def parts_qty_map(parts_used: list) -> dict:
@@ -925,7 +930,11 @@ async def update_repair(repair_id: str, body: RepairUpdate, user: dict = Depends
         await db.cash_movements.update_many({"reference_id": repair_id, "category": "riparazione"}, {"$set": {"amount": float(updated["final_price"])}})
     if updated.get("status") == "consegnata" and not updated.get("paid"):
         await db.cash_movements.delete_many({"reference_id": repair_id, "category": "riparazione"})
-    await sync_refurb_sale_cost(repair_id)
+    warnings = await sync_refurb_sale_cost(repair_id)
+    if "parts_used" in data:
+        missing = [p["part_name"] for p in updated.get("parts_used", []) if p.get("part_id") and not await db.parts.find_one({"id": p["part_id"]})]
+        if missing:
+            warnings.append("Ricambi non più presenti in magazzino: " + ", ".join(missing))
     if any(k in data for k in ("device_brand", "device_model")):
         await db.cash_movements.update_many({"reference_id": repair_id, "category": "riparazione"}, {"$set": {"description": repair_cash_description(updated)}})
 
@@ -942,6 +951,7 @@ async def update_repair(repair_id: str, body: RepairUpdate, user: dict = Depends
                 date=updated.get("delivered_at") or now_iso(),
             )
             await db.cash_movements.insert_one(mov.model_dump())
+    updated["warnings"] = warnings
     return updated
 
 
@@ -1371,23 +1381,51 @@ async def update_refurbished(ref_id: str, body: RefurbishedUpdate, user: dict = 
     data = body.model_dump(exclude_unset=True)
     data["updated_at"] = now_iso()
     await db.refurbished.update_one({"id": ref_id}, {"$set": data})
-    if "purchase_cost" in data:
-        await db.cash_movements.update_one(
-            {"reference_id": ref_id, "category": "acquisto"},
-            {"$set": {"amount": float(data["purchase_cost"])}},
-        )
+    warnings: list = []
+    fresh = await db.refurbished.find_one({"id": ref_id})
+    if "purchase_cost" in data or "purchase_date" in data or "brand" in data or "model" in data:
+        await sync_refurb_purchase_movement(fresh)
     if existing.get("sale_id") and ("sold_at" in data or "sale_price" in data):
+        sale_doc = await db.sales.find_one({"id": existing["sale_id"]})
+        if not sale_doc:
+            warnings.append(f"Vendita collegata non trovata: prezzo/data non propagati alla sezione Vendite")
         upd = {}
         if data.get("sold_at"):
             upd["created_at"] = data["sold_at"]
+            await db.cash_movements.update_many({"reference_id": existing["sale_id"], "category": "vendita"}, {"$set": {"date": data["sold_at"]}})
         if data.get("sale_price") is not None:
-            sale_doc = await db.sales.find_one({"id": existing["sale_id"]})
             upd["total"] = float(data["sale_price"])
             upd["items.0.unit_price"] = float(data["sale_price"])
             upd["margin"] = round(float(data["sale_price"]) - float((sale_doc or {}).get("cost_total", 0)), 2)
-        if upd:
+            await db.cash_movements.update_many({"reference_id": existing["sale_id"], "category": "vendita"}, {"$set": {"amount": float(data["sale_price"])}})
+        if upd and sale_doc:
             await db.sales.update_one({"id": existing["sale_id"]}, {"$set": upd})
-    return await enrich_refurb(await db.refurbished.find_one({"id": ref_id}))
+    out = await enrich_refurb(fresh)
+    out["warnings"] = warnings
+    return out
+
+
+def refurb_purchase_description(d: dict) -> str:
+    return f"Acquisto dispositivo {d['code']} · {d.get('brand') or ''} {d.get('model') or ''}".strip()
+
+
+async def sync_refurb_purchase_movement(d: dict) -> bool:
+    """Allinea (crea/aggiorna/rimuove) l'uscita di cassa 'acquisto' del ricondizionato. Ritorna True se ha modificato."""
+    mov = await db.cash_movements.find_one({"reference_id": d["id"], "category": "acquisto"})
+    cost = float(d.get("purchase_cost") or 0)
+    if cost <= 0:
+        if mov:
+            await db.cash_movements.delete_one({"id": mov["id"]})
+            return True
+        return False
+    want = {"amount": cost, "description": refurb_purchase_description(d), "date": d.get("purchase_date") or d.get("created_at")}
+    if not mov:
+        await db.cash_movements.insert_one(CashMovement(type="uscita", category="acquisto", reference_id=d["id"], **want).model_dump())
+        return True
+    if abs(float(mov["amount"]) - cost) > 0.005 or mov.get("description") != want["description"] or mov.get("date") != want["date"]:
+        await db.cash_movements.update_one({"id": mov["id"]}, {"$set": want})
+        return True
+    return False
 
 
 @api.post("/refurbished/{ref_id}/costs")
@@ -1491,23 +1529,41 @@ async def open_repair_from_refurb(ref_id: str, body: OpenRepairIn, user: dict = 
 
 
 @api.delete("/refurbished/{ref_id}")
-async def delete_refurbished(ref_id: str, delete_sale: bool = False, restore_parts: bool = False, user: dict = Depends(get_current_user)):
+async def delete_refurbished(
+    ref_id: str, delete_sale: bool = False, restore_parts: bool = False,
+    cancel_cash: bool = True, delete_repair: bool = True, user: dict = Depends(get_current_user),
+):
     existing = await db.refurbished.find_one({"id": ref_id})
+    warnings: list = []
     if existing:
         ids = [ref_id] + [c["id"] for c in existing.get("refurb_costs", [])]
-        await db.cash_movements.delete_many({"reference_id": {"$in": ids}})
-        if existing.get("sale_id") and delete_sale:
-            await db.sales.delete_one({"id": existing["sale_id"]})
-            await db.cash_movements.delete_many({"reference_id": existing["sale_id"]})
+        if cancel_cash:
+            await db.cash_movements.delete_many({"reference_id": {"$in": ids}})
+        else:
+            await db.cash_movements.update_many({"reference_id": {"$in": ids}}, {"$set": {"reference_id": None}})
+        if existing.get("sale_id"):
+            if delete_sale:
+                await db.sales.delete_one({"id": existing["sale_id"]})
+                if cancel_cash:
+                    await db.cash_movements.delete_many({"reference_id": existing["sale_id"]})
+                else:
+                    await db.cash_movements.update_many({"reference_id": existing["sale_id"]}, {"$set": {"reference_id": None}})
+            elif not await db.sales.find_one({"id": existing["sale_id"]}):
+                warnings.append("La vendita collegata non è stata trovata")
         if existing.get("repair_id"):
             rep = await db.repairs.find_one({"id": existing["repair_id"]})
-            if rep:
+            if rep and delete_repair:
                 if restore_parts and rep.get("status") != "annullata":
                     await apply_parts_stock_delta(rep.get("parts_used", []), [])
                 await db.repairs.delete_one({"id": rep["id"]})
-                await db.cash_movements.delete_many({"reference_id": rep["id"]})
+                if cancel_cash:
+                    await db.cash_movements.delete_many({"reference_id": rep["id"]})
+                else:
+                    await db.cash_movements.update_many({"reference_id": rep["id"]}, {"$set": {"reference_id": None}})
+            elif not rep:
+                warnings.append("La riparazione collegata non è stata trovata")
     await db.refurbished.delete_one({"id": ref_id})
-    return {"ok": True}
+    return {"ok": True, "warnings": warnings}
 
 
 # ---------- Device catalog ----------
@@ -1984,6 +2040,177 @@ async def wipe_data(body: WipeIn, user: dict = Depends(get_current_user)):
         await seed_services()
         await seed_part_templates()
     return {"ok": True, "deleted": result}
+
+
+# ---------- Integrity check ----------
+def _issue(kind: str, section: str, message: str, fixable: bool, ref: str = None, fix: dict = None) -> dict:
+    return {"id": f"{kind}:{ref or new_id()}", "kind": kind, "section": section, "message": message,
+            "fixable": fixable, "reference_id": ref, "fix": fix or {}}
+
+
+async def _check_customers(issues: list, customers: dict):
+    for coll, label, sect in (("repairs", "ticket_number", "riparazioni"), ("sales", "invoice_number", "vendite")):
+        async for d in db[coll].find({"customer_id": {"$nin": [None, ""]}}):
+            c = customers.get(d["customer_id"])
+            if not c:
+                issues.append(_issue("customer_missing", sect, f"{d[label]}: cliente collegato non esiste più", True, d["id"],
+                                     {"coll": coll, "set": {"customer_id": None}}))
+            elif c.get("name") != d.get("customer_name"):
+                issues.append(_issue("customer_name", sect, f"{d[label]}: nome cliente «{d.get('customer_name')}» ≠ anagrafica «{c['name']}»", True, d["id"],
+                                     {"coll": coll, "set": {"customer_name": c["name"]}}))
+
+
+async def _check_repairs(issues: list, parts: dict):
+    async for r in db.repairs.find({}):
+        for p in r.get("parts_used", []):
+            part = parts.get(p.get("part_id"))
+            if p.get("part_id") and not part:
+                issues.append(_issue("part_missing", "riparazioni", f"{r['ticket_number']}: ricambio «{p.get('part_name')}» non esiste più in magazzino", False, r["id"]))
+            elif part and part.get("name") != p.get("part_name"):
+                issues.append(_issue("part_name", "riparazioni", f"{r['ticket_number']}: nome ricambio «{p.get('part_name')}» ≠ magazzino «{part['name']}»", True, r["id"],
+                                     {"coll": "repairs", "part_names": True}))
+        mov = await db.cash_movements.find_one({"reference_id": r["id"], "category": "riparazione"})
+        paid_delivered = r.get("status") == "consegnata" and r.get("paid") and float(r.get("final_price") or 0) > 0
+        if paid_delivered and not mov:
+            issues.append(_issue("repair_cash_missing", "cassa", f"{r['ticket_number']}: pagata e consegnata ma senza incasso in cassa", True, r["id"], {"sync_cash": True}))
+        elif mov and not paid_delivered:
+            issues.append(_issue("repair_cash_extra", "cassa", f"{r['ticket_number']}: incasso in cassa ma riparazione non pagata/consegnata", True, r["id"],
+                                 {"delete_cash": {"reference_id": r["id"], "category": "riparazione"}}))
+        elif mov and abs(float(mov["amount"]) - float(r["final_price"])) > 0.005:
+            issues.append(_issue("repair_cash_amount", "cassa", f"{r['ticket_number']}: incasso {mov['amount']:.2f} € ≠ prezzo finale {float(r['final_price']):.2f} €", True, r["id"],
+                                 {"update_cash": {"filter": {"id": mov["id"]}, "set": {"amount": float(r["final_price"])}}}))
+
+
+async def _check_sales(issues: list):
+    async for s in db.sales.find({}):
+        mov = await db.cash_movements.find_one({"reference_id": s["id"], "category": "vendita"})
+        if not mov:
+            issues.append(_issue("sale_cash_missing", "cassa", f"{s['invoice_number']}: vendita senza incasso in cassa", True, s["id"], {"sync_cash": True}))
+        elif abs(float(mov["amount"]) - float(s["total"])) > 0.005 or mov.get("date") != s["created_at"]:
+            issues.append(_issue("sale_cash_mismatch", "cassa", f"{s['invoice_number']}: incasso in cassa non allineato (importo/data)", True, s["id"], {"sync_cash": True}))
+
+
+async def _check_refurbished(issues: list):
+    async for d in db.refurbished.find({}):
+        rep = await db.repairs.find_one({"id": d["repair_id"]}) if d.get("repair_id") else None
+        if d.get("repair_id") and not rep:
+            issues.append(_issue("refurb_repair_missing", "ricondizionati", f"{d['code']}: riparazione collegata non esiste più", True, d["id"],
+                                 {"coll": "refurbished", "set": {"repair_id": None}}))
+        sale = await db.sales.find_one({"id": d["sale_id"]}) if d.get("sale_id") else None
+        if d.get("sale_id") and not sale:
+            issues.append(_issue("refurb_sale_missing", "ricondizionati", f"{d['code']}: vendita collegata non esiste più (riportato a «pronto»)", True, d["id"],
+                                 {"coll": "refurbished", "set": {"sale_id": None, "status": "pronto", "sale_price": 0.0, "sold_at": None}}))
+        elif sale:
+            enriched = await enrich_refurb(dict(d))
+            if d.get("status") != "venduto":
+                issues.append(_issue("refurb_status", "ricondizionati", f"{d['code']}: ha una vendita ma lo stato non è «venduto»", True, d["id"],
+                                     {"coll": "refurbished", "set": {"status": "venduto"}}))
+            if abs(float(sale["total"]) - float(d.get("sale_price") or 0)) > 0.005 or abs(float(sale.get("cost_total") or 0) - enriched["total_cost"]) > 0.005 \
+                    or sale.get("created_at") != d.get("sold_at"):
+                issues.append(_issue("refurb_sale_mismatch", "vendite", f"{d['code']} / {sale['invoice_number']}: prezzo, costo o data vendita non allineati", True, d["id"],
+                                     {"refurb_sale_sync": True}))
+        elif d.get("status") == "venduto":
+            issues.append(_issue("refurb_no_sale", "ricondizionati", f"{d['code']}: stato «venduto» ma nessuna vendita collegata", False, d["id"]))
+        mov = await db.cash_movements.find_one({"reference_id": d["id"], "category": "acquisto"})
+        cost = float(d.get("purchase_cost") or 0)
+        if (cost > 0 and not mov) or (mov and (abs(float(mov["amount"]) - cost) > 0.005 or mov.get("date") != d.get("purchase_date"))):
+            issues.append(_issue("refurb_purchase_cash", "cassa", f"{d['code']}: uscita di cassa acquisto mancante o non allineata", True, d["id"], {"refurb_purchase_sync": True}))
+        for c in d.get("refurb_costs", []):
+            cm = await db.cash_movements.find_one({"reference_id": c["id"]})
+            if float(c.get("amount") or 0) > 0 and not cm:
+                issues.append(_issue("refurb_cost_cash", "cassa", f"{d['code']}: costo «{c['description']}» senza uscita di cassa", True, c["id"],
+                                     {"create_cash": {"type": "uscita", "category": "ricondizionamento", "amount": float(c["amount"]),
+                                                      "description": f"{d['code']} · {c['description']}", "reference_id": c["id"], "date": c.get("date") or now_iso()}}))
+            elif cm and abs(float(cm["amount"]) - float(c.get("amount") or 0)) > 0.005:
+                issues.append(_issue("refurb_cost_amount", "cassa", f"{d['code']}: uscita «{c['description']}» {cm['amount']:.2f} € ≠ {float(c['amount']):.2f} €", True, c["id"],
+                                     {"update_cash": {"filter": {"id": cm["id"]}, "set": {"amount": float(c["amount"])}}}))
+
+
+async def _check_orphan_cash(issues: list):
+    targets = {"vendita": "sales", "riparazione": "repairs", "acquisto_ricambi": "parts", "acquisto": "refurbished"}
+    async for m in db.cash_movements.find({"reference_id": {"$nin": [None, ""]}}):
+        coll = targets.get(m.get("category"))
+        if coll:
+            found = await db[coll].find_one({"id": m["reference_id"]}) or (coll == "refurbished" and await db.purchase_orders.find_one({"id": m["reference_id"]}))
+        elif m.get("category") == "ricondizionamento":
+            found = await db.refurbished.find_one({"refurb_costs.id": m["reference_id"]})
+        else:
+            continue
+        if not found:
+            issues.append(_issue("cash_orphan", "cassa", f"Movimento «{m.get('description') or m['category']}» ({m['amount']:.2f} €) collegato a un documento eliminato", True, m["id"],
+                                 {"update_cash": {"filter": {"id": m["id"]}, "set": {"reference_id": None}}}))
+
+
+async def collect_integrity_issues() -> list:
+    issues: list = []
+    customers = {c["id"]: c async for c in db.customers.find({})}
+    parts = {p["id"]: p async for p in db.parts.find({})}
+    await _check_customers(issues, customers)
+    await _check_repairs(issues, parts)
+    await _check_sales(issues)
+    await _check_refurbished(issues)
+    await _check_orphan_cash(issues)
+    return issues
+
+
+async def apply_integrity_fix(issue: dict) -> bool:
+    fix = issue.get("fix") or {}
+    ref = issue.get("reference_id")
+    if fix.get("sync_cash"):
+        await sync_cash()
+    elif fix.get("refurb_sale_sync"):
+        d = await db.refurbished.find_one({"id": ref})
+        enriched = await enrich_refurb(dict(d))
+        price = float(d.get("sale_price") or 0)
+        sale = await db.sales.find_one({"id": d["sale_id"]})
+        sold_at = d.get("sold_at") or sale["created_at"]
+        if not d.get("sold_at"):
+            await db.refurbished.update_one({"id": ref}, {"$set": {"sold_at": sold_at}})
+        await db.sales.update_one({"id": d["sale_id"]}, {"$set": {"total": price, "items.0.unit_price": price, "cost_total": enriched["total_cost"],
+                                                                   "margin": round(price - enriched["total_cost"], 2), "created_at": sold_at}})
+        await sync_cash()
+    elif fix.get("refurb_purchase_sync"):
+        await sync_refurb_purchase_movement(await db.refurbished.find_one({"id": ref}))
+    elif fix.get("part_names"):
+        r = await db.repairs.find_one({"id": ref})
+        for p in r.get("parts_used", []):
+            part = await db.parts.find_one({"id": p.get("part_id")})
+            if part:
+                p["part_name"] = part["name"]
+        await db.repairs.update_one({"id": ref}, {"$set": {"parts_used": r["parts_used"]}})
+    elif fix.get("delete_cash"):
+        await db.cash_movements.delete_many(fix["delete_cash"])
+    elif fix.get("update_cash"):
+        await db.cash_movements.update_one(fix["update_cash"]["filter"], {"$set": fix["update_cash"]["set"]})
+    elif fix.get("create_cash"):
+        await db.cash_movements.insert_one(CashMovement(**fix["create_cash"]).model_dump())
+    elif fix.get("coll") and fix.get("set"):
+        await db[fix["coll"]].update_one({"id": ref}, {"$set": fix["set"]})
+    else:
+        return False
+    return True
+
+
+@api.get("/integrity/check")
+async def integrity_check(user: dict = Depends(get_current_user)):
+    issues = await collect_integrity_issues()
+    return {"count": len(issues), "fixable": sum(1 for i in issues if i["fixable"]), "issues": issues}
+
+
+class IntegrityRepairIn(BaseModel):
+    issue_ids: Optional[List[str]] = None
+
+
+@api.post("/integrity/repair")
+async def integrity_repair(body: IntegrityRepairIn, user: dict = Depends(get_current_user)):
+    issues = await collect_integrity_issues()
+    wanted = set(body.issue_ids or [])
+    fixed = 0
+    for i in issues:
+        if i["fixable"] and (not wanted or i["id"] in wanted):
+            fixed += 1 if await apply_integrity_fix(i) else 0
+    remaining = await collect_integrity_issues()
+    return {"fixed": fixed, "remaining": len(remaining), "issues": remaining}
 
 
 # ---------- Reports / Dashboard ----------
