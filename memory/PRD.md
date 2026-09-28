@@ -153,6 +153,18 @@
 - ✅ Dettaglio riga (DetailDialog) su Clienti, Magazzino, Riparazioni, Vendite (+ Cassa esistente)
 - ✅ Test iteration_13: backend 110/110, frontend E2E OK.
 
+## Implemented (2026-06 — sessione 11)
+- ✅ Eliminazione ricondizionato con dialog opzioni (RefurbDeleteDialog): annulla movimenti cassa
+  (altrimenti restano scollegati), elimina vendita, elimina riparazione, ripristina ricambi;
+  stessa dialog per eliminazione multipla. API DELETE /refurbished/{id}?cancel_cash&delete_repair&delete_sale&restore_parts
+- ✅ Eliminazione multipla riparazioni chiede ripristino ricambi; delete_part scollega i movimenti cassa
+- ✅ Controllo integrità: GET /integrity/check, POST /integrity/repair (clienti/ricambi rinominati o mancanti,
+  cassa vs vendite/riparazioni/ricondizionati, vendita ricondizionato, movimenti orfani); avviso in Dashboard
+  (IntegrityAlert) con "Ripara automaticamente"
+- ✅ Risposte con `warnings` (propagazione non riuscita) → toast globale via interceptor axios
+- ✅ PUT ricondizionato allinea sempre l'uscita acquisto (importo/data/descrizione) e la cassa della vendita
+- ✅ Test iteration_14: backend 114/114, frontend E2E OK.
+
 ## Backlog (P1/P2)
 - P1 Filtri per data su report (settimana/mese/trimestre/anno)
 - P1 Riordino rapido da "sotto scorta" → crea ordine precompilato al fornitore

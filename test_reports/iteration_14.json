@@ -1,0 +1,56 @@
+{
+  "summary": "Frontend-only testing of Iteration 14 features: Refurbished delete dialog with options (single + bulk), Repairs bulk delete with parts restore, Dashboard IntegrityAlert. All 6 requested scenarios PASSED.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "tests_executed": [
+    {
+      "id": "T1_login",
+      "flow": "Login admin@lab.local/admin123",
+      "result": "PASS - session established, dashboard loaded"
+    },
+    {
+      "id": "T2_integrity_dashboard",
+      "flow": "Dashboard IntegrityAlert",
+      "result": "PASS - data-testid=integrity-ok (verde) visibile: 'Tutti i dati collegati tra le sezioni sono coerenti.' Nessuna anomalia da riparare in questo istante."
+    },
+    {
+      "id": "T3_refurb_single_delete_with_parts_restore",
+      "flow": "Create refurb -> open-repair via API -> PUT parts_used (qty 5) -> click delete-refurb-{id}",
+      "result": "PASS - refurb-delete-dialog aperto; opt-cancel-cash, opt-delete-repair, opt-restore-parts presenti; opt-delete-sale correttamente ASSENTE (non venduto). Toggling opt-delete-repair OFF disabilita opt-restore-parts (attributo disabled='' presente). Dopo confirm: repair 404, ricambio qty tornato a 5. ✓"
+    },
+    {
+      "id": "T4_refurb_bulk_delete",
+      "flow": "Create 2 refurbs -> select checkboxes -> bulk-delete-button -> refurb-delete-dialog -> confirm",
+      "result": "PASS - dialog condiviso apre, entrambi eliminati (404)."
+    },
+    {
+      "id": "T5_refurb_delete_cancel_cash_off",
+      "flow": "Create refurb purchase_cost=100 -> delete con opt-cancel-cash DISATTIVATO",
+      "result": "PASS - Il movimento cassa 'uscita: Acquisto dispositivo RIC-00061 · ... amt=100' resta in /api/cash con reference_id=None (scollegato). Refurb eliminato (404)."
+    },
+    {
+      "id": "T6_repairs_bulk_delete_restore_parts",
+      "flow": "Create 2 repairs con parts_used qty=2 (ricambio partito da 10 -> 6) -> select rows -> bulk-delete-button -> 2 window.confirm",
+      "result": "PASS - Compaiono i due prompt ('Eliminare 2 riparazioni?' e 'Alcune riparazioni hanno usato ricambi: ripristinarli in magazzino?'). Accettati entrambi. Entrambe le riparazioni 404. Ricambio qty ripristinata 6 -> 10. ✓"
+    }
+  ],
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "RepairsPage.removeSelected usa due window.confirm nativi in sequenza — funziona ma UX inconsistente con l'elegante RefurbDeleteDialog. Considerare l'introduzione di un dialog analogo per le riparazioni.",
+    "IntegrityAlert.repair() dopo il fetch aggiorna lo stato usando r.data.issues che è la lista completa (incluse quelle rimanenti/non-fixable): fixable count viene ricomputato correttamente ma non ricaricano dal server (state divergence possibile se repair() modifica altri record concorrenti). Minor.",
+    "RefurbDeleteDialog: la label opt-restore-parts non appare se hasParts è false anche quando c'è una repair collegata senza ricambi — comportamento corretto ma potrebbe confondere se in futuro parts sono aggiunti; nessuna azione richiesta ora."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (not tested per request)", "frontend": "100% (6/6 scenarios)"},
+  "test_credentials": "admin@lab.local / admin123 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Test data creata e ripulita al termine: TEST_PART_A/BULK/BULK2, TEST_Cust_Bulk/Bulk2, refurbs RIC-00056/59/60/61 + bulk. Cleanup eseguito via API (/refurbished, /customers, /parts, /cash).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 14 features (RefurbDeleteDialog single+bulk, IntegrityAlert, Repairs bulk restore parts) verificate end-to-end via UI. Tutti i data-testid attesi presenti. Endpoint cassa è /api/cash (non /api/cash-movements). L'opt-restore-parts viene renderizzata con attributo `disabled` (stringa vuota) quando opt-delete-repair è OFF: verificare con getAttribute('disabled') !== null piuttosto che con truthy check.",
+  "rca of the issue": "Nessun bug riscontrato."
+}
