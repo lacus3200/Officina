@@ -1,0 +1,36 @@
+{
+  "summary": "Iteration 9 post-refactor regression testing (no functional changes expected). All 69/69 existing pytest tests pass (sequential run). New 6/6 regression tests added covering dashboard shape+coherence, catalog seeding, purchase-order partial/full receive + errors, backup export/merge/replace + validation, and cash-sync idempotency. Frontend smoke test: login OK, dashboard KPIs+chart render, navigation to Magazzino/Riparazioni/Cassa/Backup works without console/UI errors.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/cash", "issue": "GET still triggers sync_cash() on every request; under parallel pytest execution (xdist) this races with concurrent sale create/delete and leaves orphan movements, causing test_cash_sync_keys_and_idempotent to intermittently fail. Sequential run is clean (69/69). Consider making sync run only on POST /cash/sync, or make orphan detection tolerant of in-flight writes."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter9_refactor_regression.py",
+    "/app/test_reports/pytest/iter9.xml"
+  ],
+  "action_items": [
+    "(Optional) Investigate whether sync_cash() should run on GET /api/cash. It causes a race under parallel test runs; sequential run is 69/69 green."
+  ],
+  "critical_code_review_comments": [
+    "Refactor is clean: sum_cash/cash_summary/daily_cash_series/inventory_stats are small and composable; setup_indexes/seed_*/ensure_admin_user split is readable; apply_receipt_line + record_order_expense correctly encapsulate side effects; validate_backup_payload/replace_collection/merge_collection make backup logic testable; sync_cash split into sync_sales_cash/remove_orphan_sale_movements/sync_repairs_cash/sync_parts_cash keeps idempotency.",
+    "server.py is still ~1788 lines - splitting into routers by domain would help maintainability.",
+    "sync_cash() only removes orphan 'vendita' movements; orphan 'riparazione' and 'acquisto_ricambi' movements are still not cleaned when the underlying entity is deleted (pre-existing note from iter 8)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter9_refactor_regression.py"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@lab.local / admin123 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Regression tests create TEST_-prefixed purchase orders, parts, and cash movements; all cleaned up after tests.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Login button label is 'Entra' (not 'Accedi'). After login, redirect is to '/' (Dashboard shows 'Panoramica'). Backup page is at /impostazioni. Run backend tests with `-o addopts=` to disable xdist parallel (avoids sync_cash race). Regression file: tests/test_iter9_refactor_regression.py.",
+  "rca of the issue": "N/A - refactor is regression-free. Only note: the pre-existing intermittent failure of test_cash_sync_keys_and_idempotent under xdist is due to concurrent tests creating/deleting sales while another worker calls /cash/sync; sync sees a sale-less movement transiently and removes it, so the second sync reports orphans_removed=1. This is a test-parallelism artifact, not a code regression - sequential run is 100% green."
+}

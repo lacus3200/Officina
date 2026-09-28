@@ -103,6 +103,13 @@
 - ✅ Ricambi → uscite cassa "acquisto_ricambi" (creazione, aumento quantità, backfill via sync);
   dettaglio movimento tipo "part". Test iteration_8 OK.
 
+## Implemented (2026-06 — sessione 6, code review)
+- ✅ Refactor backend senza cambi funzionali: dashboard, startup, receive_order, import_backup,
+  sync_cash suddivisi in helper (complessità ridotta)
+- ✅ Test: credenziali non più hardcoded (tests/conftest.py legge env o backend/.env),
+  fixture condivise (client, temp_part, cash_for), test complessi spezzati in casi singoli
+- ✅ Suite 69/69 + regressione iteration_9 OK
+
 ## Backlog (P1/P2)
 - P1 Filtri per data su report (settimana/mese/trimestre/anno)
 - P1 Riordino rapido da "sotto scorta" → crea ordine precompilato al fornitore
