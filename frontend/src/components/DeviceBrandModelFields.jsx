@@ -20,6 +20,16 @@ export function DeviceBrandModelFields({ brand, model, onChange, deviceType }) {
     useEffect(() => { loadBrands(); }, []);
     useEffect(() => { loadModels(brand); }, [brand]);
 
+    const mutate = async (fn, msg, after) => {
+        try {
+            await fn();
+            toast.success(msg);
+            await after?.();
+        } catch (e) {
+            toast.error(formatApiError(e));
+        }
+    };
+
     const brandKnown = !brand || brands.some((b) => b.name === brand);
     const modelKnown = !model || models.some((m) => m.name === model);
 
@@ -52,8 +62,11 @@ export function DeviceBrandModelFields({ brand, model, onChange, deviceType }) {
                     placeholder="Marca"
                     searchPlaceholder="Cerca marca…"
                     noneLabel="—"
-                    options={[...brands.map((b) => ({ value: b.name, label: b.name })), ...(!brandKnown ? [{ value: brand, label: brand }] : [])]}
+                    options={[...brands.map((b) => ({ value: b.name, label: b.name, id: b.id })), ...(!brandKnown ? [{ value: brand, label: brand }] : [])]}
                     onChange={(v) => onChange({ brand: v, model: "" })}
+                    canEdit={(o) => !!o.id}
+                    onRename={(o, n) => mutate(() => api.put(`/catalog/brands/${o.id}`, { name: n }), "Marca rinominata", () => { loadBrands(); if (brand === o.value) onChange({ brand: n, model }); })}
+                    onDelete={(o) => mutate(() => api.delete(`/catalog/brands/${o.id}`), "Marca eliminata", () => { loadBrands(); if (brand === o.value) onChange({ brand: "", model: "" }); })}
                     actions={[{ label: "Aggiungi marca…", testId: "device-brand-add", onSelect: () => { setDraft({ name: "", code: "" }); setDialog("brand"); } }]}
                 />
             </div>
@@ -66,8 +79,11 @@ export function DeviceBrandModelFields({ brand, model, onChange, deviceType }) {
                     placeholder={brand ? "Modello" : "Scegli prima la marca"}
                     searchPlaceholder="Cerca modello o codice…"
                     noneLabel="—"
-                    options={[...models.map((m) => ({ value: m.name, label: m.code ? `${m.name} (${m.code})` : m.name, keywords: m.code || "" })), ...(!modelKnown ? [{ value: model, label: model }] : [])]}
+                    options={[...models.map((m) => ({ value: m.name, label: m.code ? `${m.name} (${m.code})` : m.name, rawLabel: m.name, keywords: m.code || "", id: m.id, code: m.code })), ...(!modelKnown ? [{ value: model, label: model }] : [])]}
                     onChange={(v) => onChange({ brand, model: v })}
+                    canEdit={(o) => !!o.id}
+                    onRename={(o, n) => mutate(() => api.put(`/catalog/models/${o.id}`, { brand, name: n, code: o.code }), "Modello rinominato", () => { loadModels(brand); if (model === o.value) onChange({ brand, model: n }); })}
+                    onDelete={(o) => mutate(() => api.delete(`/catalog/models/${o.id}`), "Modello eliminato", () => { loadModels(brand); if (model === o.value) onChange({ brand, model: "" }); })}
                     actions={brand ? [{ label: "Aggiungi modello…", testId: "device-model-add", onSelect: () => { setDraft({ name: "", code: "" }); setDialog("model"); } }] : []}
                 />
             </div>

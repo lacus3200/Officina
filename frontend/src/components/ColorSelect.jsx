@@ -46,6 +46,9 @@ export function ColorSelect({ brand, model, value, onChange }) {
                 noneLabel="—"
                 options={[...colors.map((c) => ({ value: c, label: c })), ...(value && !colors.includes(value) ? [{ value, label: value }] : [])]}
                 onChange={(v) => onChange(v)}
+                canEdit={() => !!modelId}
+                onRename={(o, n) => api.put(`/catalog/models/${modelId}/colors`, { old: o.value, new: n }).then(() => { toast.success("Colore rinominato"); load(); if (value === o.value) onChange(n); }).catch((e) => toast.error(formatApiError(e)))}
+                onDelete={(o) => api.put(`/catalog/models/${modelId}/colors`, { old: o.value, new: null }).then(() => { toast.success("Colore eliminato"); load(); if (value === o.value) onChange(""); }).catch((e) => toast.error(formatApiError(e)))}
                 actions={[{ label: "Aggiungi colore…", testId: "refurb-color-add", onSelect: () => { setDraft(""); setOpen(true); } }]}
             />
             <Dialog open={open} onOpenChange={setOpen}>

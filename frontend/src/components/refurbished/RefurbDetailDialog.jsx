@@ -298,7 +298,7 @@ export function RefurbDetailDialog({ item, onOpenChange, onChanged }) {
                                             value={sell.customer_id}
                                             testId="sell-customer-select"
                                             noneLabel="— walk-in —"
-                                            onCreated={(c) => setCustomers((prev) => [c, ...prev])}
+                                            onCreated={(c, mode) => setCustomers((prev) => (mode === "delete" ? prev.filter((x) => x.id !== c.id) : mode === "update" ? prev.map((x) => (x.id === c.id ? c : x)) : [c, ...prev]))}
                                             onChange={(id, c) => setSell({ ...sell, customer_id: id, customer_name: c?.name || "" })}
                                         />
                                     </div>

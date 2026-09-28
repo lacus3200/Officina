@@ -34,6 +34,7 @@ const EMPTY = {
     grade: "",
     purchase_cost: 0,
     purchase_source: "",
+    purchase_date: "",
     supplier_id: "",
     target_price: 0,
     status: "acquistato",
@@ -52,8 +53,9 @@ export function RefurbFormDialog({ open, onOpenChange, editing, onSaved }) {
                       ...Object.fromEntries(
                           Object.keys(EMPTY).map((k) => [k, editing[k] ?? EMPTY[k]]),
                       ),
+                      purchase_date: (editing.purchase_date || "").slice(0, 10),
                   }
-                : EMPTY,
+                : { ...EMPTY, purchase_date: new Date().toISOString().slice(0, 10) },
         );
     }, [open, editing]);
 
@@ -66,6 +68,7 @@ export function RefurbFormDialog({ open, onOpenChange, editing, onSaved }) {
                 supplier_id: form.supplier_id || null,
                 purchase_cost: Number(form.purchase_cost || 0),
                 target_price: Number(form.target_price || 0),
+                purchase_date: form.purchase_date ? new Date(`${form.purchase_date}T12:00:00`).toISOString() : undefined,
             };
             if (editing) {
                 await api.put(`/refurbished/${editing.id}`, payload);
@@ -177,9 +180,15 @@ export function RefurbFormDialog({ open, onOpenChange, editing, onSaved }) {
                             />
                         </div>
                     </div>
-                    <div>
-                        <Label className="eyebrow">Provenienza (es. privato, permuta, asta)</Label>
-                        <Input value={form.purchase_source} onChange={set("purchase_source")} />
+                    <div className="grid grid-cols-3 gap-3">
+                        <div className="col-span-2">
+                            <Label className="eyebrow">Provenienza (es. privato, permuta, asta)</Label>
+                            <Input value={form.purchase_source} onChange={set("purchase_source")} />
+                        </div>
+                        <div>
+                            <Label className="eyebrow">Data acquisto</Label>
+                            <Input type="date" value={form.purchase_date} onChange={set("purchase_date")} data-testid="refurb-purchase-date" />
+                        </div>
                     </div>
                     <div>
                         <Label className="eyebrow">Note</Label>

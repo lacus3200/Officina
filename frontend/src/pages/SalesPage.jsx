@@ -179,7 +179,7 @@ export default function SalesPage() {
                                         value={form.customer_id}
                                         testId="sale-customer-select"
                                         noneLabel="— walk-in —"
-                                        onCreated={(c) => setCustomers((prev) => [c, ...prev])}
+                                        onCreated={(c, mode) => setCustomers((prev) => (mode === "delete" ? prev.filter((x) => x.id !== c.id) : mode === "update" ? prev.map((x) => (x.id === c.id ? c : x)) : [c, ...prev]))}
                                         onChange={(id, c) => setForm({ ...form, customer_id: id, customer_name: c?.name || "" })}
                                     />
                                 </div>

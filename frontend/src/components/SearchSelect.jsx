@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { Check, ChevronsUpDown, Plus } from "lucide-react";
+import { Check, ChevronsUpDown, Plus, Pencil, Trash2 } from "lucide-react";
 
 const sortIt = (a, b) => String(a.label).localeCompare(String(b.label), "it", { numeric: true, sensitivity: "base" });
 
@@ -20,6 +20,9 @@ export function SearchSelect({
     actions = [],
     sorted = true,
     renderLabel,
+    onRename,
+    onDelete,
+    canEdit = () => true,
 }) {
     const [open, setOpen] = useState(false);
     const groups = useMemo(() => {
@@ -75,7 +78,23 @@ export function SearchSelect({
                                         data-testid={testId ? `${testId}-opt-${o.value}` : undefined}
                                     >
                                         <Check className={`mr-2 h-4 w-4 shrink-0 ${o.value === value ? "opacity-100" : "opacity-0"}`} />
-                                        <span className="truncate">{renderLabel ? renderLabel(o) : o.label}</span>
+                                        <span className="truncate flex-1">{renderLabel ? renderLabel(o) : o.label}</span>
+                                        {(onRename || onDelete) && canEdit(o) && (
+                                            <span className="ml-2 flex items-center gap-1 opacity-40 hover:opacity-100 shrink-0" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+                                                {onRename && (
+                                                    <button type="button" title="Rinomina" className="p-1 rounded hover:bg-white/10 hover:text-primary" data-testid={testId ? `${testId}-rename-${o.value}` : undefined}
+                                                        onClick={(e) => { e.stopPropagation(); const n = window.prompt("Nuovo nome", o.rawLabel ?? o.label); if (n && n.trim() && n.trim() !== (o.rawLabel ?? o.label)) { setOpen(false); onRename(o, n.trim()); } }}>
+                                                        <Pencil className="h-3.5 w-3.5" />
+                                                    </button>
+                                                )}
+                                                {onDelete && (
+                                                    <button type="button" title="Elimina" className="p-1 rounded hover:bg-white/10 hover:text-red-400" data-testid={testId ? `${testId}-delete-${o.value}` : undefined}
+                                                        onClick={(e) => { e.stopPropagation(); if (window.confirm(`Eliminare "${o.rawLabel ?? o.label}" dall'elenco?`)) { setOpen(false); onDelete(o); } }}>
+                                                        <Trash2 className="h-3.5 w-3.5" />
+                                                    </button>
+                                                )}
+                                            </span>
+                                        )}
                                     </CommandItem>
                                 ))}
                             </CommandGroup>

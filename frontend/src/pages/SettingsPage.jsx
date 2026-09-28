@@ -2,7 +2,8 @@ import React, { useRef, useState } from "react";
 import { api, formatApiError } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Download, Upload, DatabaseBackup, AlertTriangle, ShieldCheck } from "lucide-react";
+import { Download, Upload, DatabaseBackup, AlertTriangle, ShieldCheck, Trash2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
@@ -21,6 +22,22 @@ export default function SettingsPage() {
     const [review, setReview] = useState(null);
     const [excluded, setExcluded] = useState(new Set());
     const [editing, setEditing] = useState(null);
+    const [wipeText, setWipeText] = useState("");
+    const [wipeCatalogs, setWipeCatalogs] = useState(false);
+
+    const doWipe = async () => {
+        if (!window.confirm("Questa operazione cancella definitivamente i dati. Continuare?")) return;
+        setBusy(true);
+        try {
+            const { data } = await api.post("/backup/wipe", { confirm: wipeText, include_catalogs: wipeCatalogs });
+            toast.success(`Dati cancellati: ${Object.values(data.deleted).reduce((a, b) => a + b, 0)} record`);
+            setWipeText("");
+        } catch (e) {
+            toast.error(formatApiError(e));
+        } finally {
+            setBusy(false);
+        }
+    };
 
     const validate = async (collections) => {
         try {
@@ -199,6 +216,27 @@ export default function SettingsPage() {
                             </div>
                         </div>
                     )}
+                </CardContent>
+            </Card>
+            <Card className="border-red-900/60">
+                <CardContent className="p-6 space-y-4">
+                    <div className="flex items-start gap-3">
+                        <div className="h-10 w-10 rounded-md bg-red-950 border border-red-800 grid place-items-center shrink-0"><Trash2 className="h-5 w-5 text-red-300" /></div>
+                        <div>
+                            <div className="font-display font-semibold">Cancella tutti i dati</div>
+                            <div className="text-sm text-muted-foreground">Elimina clienti, riparazioni, magazzino, vendite, cassa e ricondizionati. Azione irreversibile: esporta prima un backup.</div>
+                        </div>
+                    </div>
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                        <input type="checkbox" checked={wipeCatalogs} onChange={(e) => setWipeCatalogs(e.target.checked)} data-testid="wipe-catalogs-checkbox" />
+                        Azzera anche i cataloghi (marche/modelli, listino, catalogo ricambi verranno ripristinati ai valori iniziali)
+                    </label>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                        <Input placeholder='Digita ELIMINA per confermare' value={wipeText} onChange={(e) => setWipeText(e.target.value)} className="sm:max-w-xs" data-testid="wipe-confirm-input" />
+                        <Button variant="destructive" onClick={doWipe} disabled={busy || wipeText !== "ELIMINA"} data-testid="wipe-button">
+                            <Trash2 className="h-4 w-4 mr-2" /> Cancella tutti i dati
+                        </Button>
+                    </div>
                 </CardContent>
             </Card>
             <Dialog open={!!editing} onOpenChange={(v) => !v && setEditing(null)}>

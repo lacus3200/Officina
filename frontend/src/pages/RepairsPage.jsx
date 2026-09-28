@@ -228,7 +228,7 @@ export default function RepairsPage() {
                                     customers={customers}
                                     value={form.customer_id}
                                     testId="repair-customer-select"
-                                    onCreated={(c) => setCustomers((prev) => [c, ...prev])}
+                                    onCreated={(c, mode) => setCustomers((prev) => (mode === "delete" ? prev.filter((x) => x.id !== c.id) : mode === "update" ? prev.map((x) => (x.id === c.id ? c : x)) : [c, ...prev]))}
                                     onChange={(id, c) =>
                                         setForm({ ...form, customer_id: id, customer_name: id ? c?.name || "" : form.customer_name })
                                     }

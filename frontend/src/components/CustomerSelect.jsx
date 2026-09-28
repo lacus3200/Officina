@@ -37,6 +37,23 @@ export function CustomerSelect({ customers, value, onChange, onCreated, placehol
                     options={customers.map((c) => ({ value: c.id, label: c.name, keywords: c.phone || "" }))}
                     renderLabel={(o) => { const c = customers.find((x) => x.id === o.value); return c?.phone ? `${c.name} · ${c.phone}` : o.label; }}
                     onChange={(id) => onChange(id, customers.find((c) => c.id === id))}
+                    onRename={async (o, n) => {
+                        const c = customers.find((x) => x.id === o.value);
+                        try {
+                            const { data } = await api.put(`/customers/${o.value}`, { ...c, name: n });
+                            toast.success("Cliente rinominato");
+                            onCreated?.(data, "update");
+                            if (value === o.value) onChange(o.value, data);
+                        } catch (e) { toast.error(formatApiError(e)); }
+                    }}
+                    onDelete={async (o) => {
+                        try {
+                            await api.delete(`/customers/${o.value}`);
+                            toast.success("Cliente eliminato");
+                            onCreated?.({ id: o.value }, "delete");
+                            if (value === o.value) onChange("", null);
+                        } catch (e) { toast.error(formatApiError(e)); }
+                    }}
                 />
                 <Button type="button" variant="outline" size="icon" className="shrink-0" title="Nuovo cliente" onClick={() => setOpen(true)} data-testid="quick-new-customer-button">
                     <UserPlus className="h-4 w-4" />

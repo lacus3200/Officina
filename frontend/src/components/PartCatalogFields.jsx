@@ -5,9 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SearchSelect } from "@/components/SearchSelect";
-import { Plus, X, Check, ChevronsUpDown } from "lucide-react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { X } from "lucide-react";
 import { toast } from "sonner";
 
 const FREE = "__free__";
@@ -17,7 +15,6 @@ export function PartNameSelect({ value, onSelect }) {
     const [open, setOpen] = useState(false);
     const [draft, setDraft] = useState({ name: "", category: "" });
     const [free, setFree] = useState(false);
-    const [pickerOpen, setPickerOpen] = useState(false);
 
     const load = () => api.get("/catalog/parts").then((r) => setTemplates(r.data)).catch(() => {});
     useEffect(() => { load(); }, []);
@@ -33,7 +30,6 @@ export function PartNameSelect({ value, onSelect }) {
     }, [draft.name]);
 
     const known = templates.find((t) => t.name === value);
-    const grouped = templates.reduce((acc, t) => { (acc[t.category || "Altro"] = acc[t.category || "Altro"] || []).push(t); return acc; }, {});
 
     const add = async () => {
         try {
@@ -59,40 +55,21 @@ export function PartNameSelect({ value, onSelect }) {
 
     return (
         <>
-            <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
-                <PopoverTrigger asChild>
-                    <Button type="button" variant="outline" role="combobox" className="w-full justify-between font-normal" data-testid="part-name-select">
-                        <span className={value ? "" : "text-muted-foreground"}>{value || "Cerca nel catalogo ricambi…"}</span>
-                        <ChevronsUpDown className="h-4 w-4 opacity-50 shrink-0" />
-                    </Button>
-                </PopoverTrigger>
-                <PopoverContent className="p-0 w-[var(--radix-popover-trigger-width)] bg-card border-border" align="start">
-                    <Command>
-                        <CommandInput placeholder="Digita per cercare…" data-testid="part-name-search-input" />
-                        <CommandList className="max-h-72">
-                            <CommandEmpty>Nessun ricambio trovato.</CommandEmpty>
-                            {Object.entries(grouped).map(([cat, list]) => (
-                                <CommandGroup key={cat} heading={cat}>
-                                    {list.map((t) => (
-                                        <CommandItem key={t.id} value={`${t.name} ${t.category}`} onSelect={() => { onSelect(t.name, t.category || null); setPickerOpen(false); }} data-testid={`part-name-option-${t.id}`}>
-                                            <Check className={`mr-2 h-4 w-4 ${value === t.name ? "opacity-100" : "opacity-0"}`} />
-                                            {t.name}
-                                        </CommandItem>
-                                    ))}
-                                </CommandGroup>
-                            ))}
-                            <CommandGroup heading="Altro">
-                                <CommandItem value="__aggiungi_catalogo__" onSelect={() => { setPickerOpen(false); setDraft({ name: "", category: "" }); setOpen(true); }} className="text-primary" data-testid="part-name-add-option">
-                                    <Plus className="mr-2 h-4 w-4" /> Aggiungi al catalogo…
-                                </CommandItem>
-                                <CommandItem value="__nome_libero__" onSelect={() => { setPickerOpen(false); setFree(true); onSelect("", null); }} data-testid="part-name-free-option">
-                                    ✎ Nome libero (una tantum)
-                                </CommandItem>
-                            </CommandGroup>
-                        </CommandList>
-                    </Command>
-                </PopoverContent>
-            </Popover>
+            <SearchSelect
+                testId="part-name-select"
+                value={value}
+                placeholder="Cerca nel catalogo ricambi…"
+                searchPlaceholder="Digita per cercare…"
+                emptyLabel="Nessun ricambio trovato."
+                options={templates.map((t) => ({ value: t.name, label: t.name, group: t.category || "Altro", keywords: t.category || "", id: t.id, category: t.category }))}
+                onChange={(v, o) => onSelect(v, o?.category || null)}
+                actions={[
+                    { label: "Aggiungi al catalogo…", testId: "part-name-add-option", onSelect: () => { setDraft({ name: "", category: "" }); setOpen(true); } },
+                    { label: "Nome libero (una tantum)", testId: "part-name-free-option", onSelect: () => { setFree(true); onSelect("", null); } },
+                ]}
+                onRename={(o, n) => api.put(`/catalog/parts/${o.id}`, { name: n, category: o.category }).then(() => { toast.success("Ricambio rinominato"); load(); if (value === o.value) onSelect(n, o.category); }).catch((e) => toast.error(formatApiError(e)))}
+                onDelete={(o) => api.delete(`/catalog/parts/${o.id}`).then(() => { toast.success("Ricambio eliminato dal catalogo"); load(); if (value === o.value) onSelect("", null); }).catch((e) => toast.error(formatApiError(e)))}
+            />
             <Dialog open={open} onOpenChange={setOpen}>
                 <DialogContent className="bg-card border-border max-w-sm" data-testid="part-template-dialog">
                     <DialogHeader><DialogTitle>Nuovo ricambio nel catalogo</DialogTitle></DialogHeader>
@@ -161,7 +138,7 @@ export function CompatibleModelsField({ value, onChange }) {
     );
 }
 
-function CreatableSelect({ value, onChange, options, placeholder, testId, addLabel }) {
+function CreatableSelect({ value, onChange, options, placeholder, testId, addLabel, onRename, onDelete }) {
     const [custom, setCustom] = useState(false);
     if (custom || (value && !options.includes(value))) {
         return (
@@ -181,18 +158,34 @@ function CreatableSelect({ value, onChange, options, placeholder, testId, addLab
             options={options.map((o) => ({ value: o, label: o }))}
             onChange={(v) => onChange(v)}
             actions={[{ label: addLabel, testId: `${testId}-add`, onSelect: () => { setCustom(true); onChange(""); } }]}
+            onRename={onRename ? (o, n) => onRename(o.value, n) : undefined}
+            onDelete={onDelete ? (o) => onDelete(o.value) : undefined}
         />
     );
 }
 
+const run = (p, msg, after) => p.then(() => { toast.success(msg); after?.(); }).catch((e) => toast.error(formatApiError(e)));
+
 export function PartCategorySelect({ value, onChange }) {
     const [cats, setCats] = useState([]);
-    useEffect(() => { api.get("/catalog/part-categories").then((r) => setCats(r.data.map((c) => c.name))).catch(() => {}); }, []);
-    return <CreatableSelect value={value} onChange={onChange} options={cats} placeholder="Categoria" testId="part-category-select" addLabel="Nuova categoria…" />;
+    const load = () => api.get("/catalog/part-categories").then((r) => setCats(r.data.map((c) => c.name))).catch(() => {});
+    useEffect(() => { load(); }, []);
+    return (
+        <CreatableSelect value={value} onChange={onChange} options={cats} placeholder="Categoria" testId="part-category-select" addLabel="Nuova categoria…"
+            onRename={(old, n) => run(api.put("/catalog/part-categories/rename", { old, new: n }), "Categoria rinominata", () => { load(); if (value === old) onChange(n); })}
+            onDelete={(old) => run(api.put("/catalog/part-categories/delete", { name: old }), "Categoria eliminata", () => { load(); if (value === old) onChange(""); })}
+        />
+    );
 }
 
 export function PartBrandSelect({ value, onChange }) {
     const [brands, setBrands] = useState([]);
-    useEffect(() => { api.get("/catalog/part-brands").then((r) => setBrands(r.data)).catch(() => {}); }, []);
-    return <CreatableSelect value={value} onChange={onChange} options={brands} placeholder="Marca / produttore" testId="part-brand-select" addLabel="Nuova marca…" />;
+    const load = () => api.get("/catalog/part-brands").then((r) => setBrands(r.data)).catch(() => {});
+    useEffect(() => { load(); }, []);
+    return (
+        <CreatableSelect value={value} onChange={onChange} options={brands} placeholder="Marca / produttore" testId="part-brand-select" addLabel="Nuova marca…"
+            onRename={(old, n) => run(api.put("/catalog/part-brands/rename", { old, new: n }), "Marca rinominata", () => { load(); if (value === old) onChange(n); })}
+            onDelete={(old) => run(api.put("/catalog/part-brands/rename", { old, new: "" }), "Marca eliminata", () => { load(); if (value === old) onChange(""); })}
+        />
+    );
 }

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { api } from "@/api/client";
+import { api, formatApiError } from "@/api/client";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,8 +11,8 @@ import { currency } from "@/lib/format";
 export function RepairServicesField({ services, deviceType, partsTotal, onChange, onUseAsEstimate }) {
     const [list, setList] = useState([]);
 
-    useEffect(() => {
-        api.get("/services", { params: { device_type: deviceType || undefined } }).then((r) => setList(r.data)).catch(() => {});
+    const reload = () => api.get("/services", { params: { device_type: deviceType || undefined } }).then((r) => setList(r.data)).catch(() => {});
+    useEffect(() => { reload(); // eslint-disable-next-line
     }, [deviceType]);
 
     const total = services.reduce((s, x) => s + Number(x.price || 0), 0);
@@ -32,7 +33,9 @@ export function RepairServicesField({ services, deviceType, partsTotal, onChange
                         placeholder="+ Aggiungi intervento"
                         searchPlaceholder="Cerca intervento…"
                         emptyLabel="Nessun intervento nel listino."
-                        options={list.map((s) => ({ value: s.id, label: `${s.name} · ${currency(s.price)}`, group: s.category || "Altro", keywords: s.category || "" }))}
+                        options={list.map((s) => ({ value: s.id, label: `${s.name} · ${currency(s.price)}`, rawLabel: s.name, group: s.category || "Altro", keywords: s.category || "", svc: s }))}
+                        onRename={(o, n) => api.put(`/services/${o.value}`, { ...o.svc, name: n }).then(() => { toast.success("Intervento rinominato"); reload(); }).catch((e) => toast.error(formatApiError(e)))}
+                        onDelete={(o) => api.delete(`/services/${o.value}`).then(() => { toast.success("Intervento eliminato"); reload(); }).catch((e) => toast.error(formatApiError(e)))}
                         onChange={(v) => {
                             const s = list.find((x) => x.id === v);
                             if (s) onChange([...services, { service_id: s.id, name: s.name, price: s.price }]);

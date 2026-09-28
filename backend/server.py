@@ -1502,6 +1502,26 @@ async def create_brand(body: BrandIn, user: dict = Depends(get_current_user)):
     return clean(doc)
 
 
+@api.put("/catalog/brands/{brand_id}")
+async def rename_brand(brand_id: str, body: BrandIn, user: dict = Depends(get_current_user)):
+    b = await db.device_brands.find_one({"id": brand_id})
+    if not b:
+        raise HTTPException(404, "Marca non trovata")
+    new = body.name.strip()
+    if not new:
+        raise HTTPException(400, "Nome marca obbligatorio")
+    old = b["name"]
+    if new != old:
+        await db.device_brands.update_one({"id": brand_id}, {"$set": {"name": new}})
+        await db.device_models.update_many({"brand": old}, {"$set": {"brand": new}})
+        await db.repairs.update_many({"device_brand": old}, {"$set": {"device_brand": new}})
+        await db.refurbished.update_many({"brand": old}, {"$set": {"brand": new}})
+        async for p in db.parts.find({"compatible_models": {"$regex": f"^{re.escape(old)}( |$)"}}):
+            cm = [re.sub(f"^{re.escape(old)}(?= |$)", new, m) for m in p.get("compatible_models", [])]
+            await db.parts.update_one({"id": p["id"]}, {"$set": {"compatible_models": cm}})
+    return clean(await db.device_brands.find_one({"id": brand_id}))
+
+
 @api.delete("/catalog/brands/{brand_id}")
 async def delete_brand(brand_id: str, user: dict = Depends(get_current_user)):
     b = await db.device_brands.find_one({"id": brand_id})
@@ -1533,6 +1553,26 @@ async def create_model(body: ModelIn, user: dict = Depends(get_current_user)):
     return clean(doc)
 
 
+@api.put("/catalog/models/{model_id}")
+async def rename_model(model_id: str, body: ModelIn, user: dict = Depends(get_current_user)):
+    m = await db.device_models.find_one({"id": model_id})
+    if not m:
+        raise HTTPException(404, "Modello non trovato")
+    new = body.name.strip()
+    if not new:
+        raise HTTPException(400, "Nome modello obbligatorio")
+    upd = {"name": new, "code": (body.code or "").strip() or m.get("code")}
+    await db.device_models.update_one({"id": model_id}, {"$set": upd})
+    if new != m["name"]:
+        await db.repairs.update_many({"device_brand": m["brand"], "device_model": m["name"]}, {"$set": {"device_model": new}})
+        await db.refurbished.update_many({"brand": m["brand"], "model": m["name"]}, {"$set": {"model": new}})
+        old_label, new_label = f"{m['brand']} {m['name']}", f"{m['brand']} {new}"
+        async for p in db.parts.find({"compatible_models": old_label}):
+            cm = [new_label if x == old_label else x for x in p.get("compatible_models", [])]
+            await db.parts.update_one({"id": p["id"]}, {"$set": {"compatible_models": cm}})
+    return clean(await db.device_models.find_one({"id": model_id}))
+
+
 @api.delete("/catalog/models/{model_id}")
 async def delete_model(model_id: str, user: dict = Depends(get_current_user)):
     await db.device_models.delete_one({"id": model_id})
@@ -1547,6 +1587,27 @@ async def add_model_color(model_id: str, body: ColorIn, user: dict = Depends(get
     res = await db.device_models.update_one({"id": model_id}, {"$addToSet": {"colors": color}})
     if res.matched_count == 0:
         raise HTTPException(404, "Modello non trovato")
+    return clean(await db.device_models.find_one({"id": model_id}))
+
+
+class ColorRenameIn(BaseModel):
+    old: str
+    new: Optional[str] = None
+
+
+@api.put("/catalog/models/{model_id}/colors")
+async def rename_or_delete_color(model_id: str, body: ColorRenameIn, user: dict = Depends(get_current_user)):
+    m = await db.device_models.find_one({"id": model_id})
+    if not m:
+        raise HTTPException(404, "Modello non trovato")
+    new = (body.new or "").strip()
+    await db.device_models.update_one({"id": model_id}, {"$pull": {"colors": body.old}})
+    if new:
+        await db.device_models.update_one({"id": model_id}, {"$addToSet": {"colors": new}})
+    await db.refurbished.update_many(
+        {"brand": m["brand"], "model": m["name"], "color": body.old},
+        {"$set": {"color": new or None}},
+    )
     return clean(await db.device_models.find_one({"id": model_id}))
 
 
@@ -1619,6 +1680,20 @@ async def rename_part_category(body: RenameIn, user: dict = Depends(get_current_
     r1 = await db.parts.update_many({"category": body.old}, {"$set": {"category": new}})
     r2 = await db.part_templates.update_many({"category": body.old}, {"$set": {"category": new}})
     return {"parts": r1.modified_count, "templates": r2.modified_count}
+
+
+@api.put("/catalog/part-categories/delete")
+async def delete_part_category(body: BrandIn, user: dict = Depends(get_current_user)):
+    r1 = await db.parts.update_many({"category": body.name}, {"$set": {"category": None}})
+    r2 = await db.part_templates.update_many({"category": body.name}, {"$set": {"category": "Altro"}})
+    return {"parts": r1.modified_count, "templates": r2.modified_count}
+
+
+@api.put("/catalog/part-brands/rename")
+async def rename_part_brand(body: RenameIn, user: dict = Depends(get_current_user)):
+    new = body.new.strip() or None
+    r = await db.parts.update_many({"brand": body.old}, {"$set": {"brand": new}})
+    return {"parts": r.modified_count}
 
 
 @api.get("/catalog/part-brands")
@@ -1856,6 +1931,31 @@ async def import_backup(body: BackupIn, user: dict = Depends(get_current_user)):
     handler = replace_collection if body.mode == "replace" else merge_collection
     result = {name: await handler(name, docs) for name, docs in body.collections.items()}
     return {"ok": True, "mode": body.mode, "imported": result}
+
+
+class WipeIn(BaseModel):
+    confirm: str
+    include_catalogs: bool = False
+
+
+OPERATIONAL_COLLECTIONS = ["customers", "parts", "repairs", "sales", "cash_movements", "suppliers", "purchase_orders", "refurbished", "counters"]
+CATALOG_COLLECTIONS = ["device_brands", "device_models", "services", "part_templates"]
+
+
+@api.post("/backup/wipe")
+async def wipe_data(body: WipeIn, user: dict = Depends(get_current_user)):
+    if body.confirm != "ELIMINA":
+        raise HTTPException(400, "Conferma non valida: digita ELIMINA")
+    names = OPERATIONAL_COLLECTIONS + (CATALOG_COLLECTIONS if body.include_catalogs else [])
+    result = {}
+    for name in names:
+        r = await db[name].delete_many({})
+        result[name] = r.deleted_count
+    if body.include_catalogs:
+        await seed_device_catalog()
+        await seed_services()
+        await seed_part_templates()
+    return {"ok": True, "deleted": result}
 
 
 # ---------- Reports / Dashboard ----------

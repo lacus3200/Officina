@@ -9,6 +9,7 @@ import { currency, formatDate, REFURB_STATUS } from "@/lib/format";
 import { StatusBadge } from "@/components/StatusBadge";
 import { RefurbFormDialog } from "@/components/refurbished/RefurbFormDialog";
 import { RefurbDetailDialog } from "@/components/refurbished/RefurbDetailDialog";
+import { useSelection, BulkBar, bulkDelete, SelectAllCheckbox } from "@/components/ResizableTable";
 
 const ICONS = { Smartphone: Smartphone, "PC / Notebook": Laptop, Tablet: Tablet, "TV / Monitor": Monitor };
 
@@ -20,6 +21,17 @@ export default function RefurbishedPage() {
     const [formOpen, setFormOpen] = useState(false);
     const [editing, setEditing] = useState(null);
     const [detail, setDetail] = useState(null);
+    const sel = useSelection(items);
+    const [bulkBusy, setBulkBusy] = useState(false);
+    const removeSelected = async () => {
+        if (!window.confirm(`Eliminare ${sel.selected.size} dispositivi e i relativi movimenti di cassa?`)) return;
+        setBulkBusy(true);
+        const res = await bulkDelete([...sel.selected], (id) => api.delete(`/refurbished/${id}`));
+        setBulkBusy(false);
+        res.failed ? toast.warning(`${res.ok} eliminati, ${res.failed} non eliminabili`) : toast.success(`${res.ok} dispositivi eliminati`);
+        sel.clear();
+        load();
+    };
 
     const load = async () => {
         try {
@@ -85,6 +97,15 @@ export default function RefurbishedPage() {
                 </div>
             </div>
 
+            <div className="flex items-center gap-3 flex-wrap">
+                {items.length > 0 && (
+                    <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
+                        <SelectAllCheckbox checked={sel.allSelected} onChange={sel.toggleAll} testId="refurbished-select-all" /> Seleziona tutti
+                    </label>
+                )}
+                <BulkBar count={sel.selected.size} onDelete={removeSelected} onClear={sel.clear} label="dispositivi" busy={bulkBusy} />
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                 {items.length === 0 && (
                     <Card className="col-span-full">
@@ -101,13 +122,22 @@ export default function RefurbishedPage() {
                     return (
                         <Card
                             key={it.id}
-                            className="hover:border-primary/40 transition-colors cursor-pointer group"
+                            className={`hover:border-primary/40 transition-colors cursor-pointer group ${sel.selected.has(it.id) ? "border-primary/60 bg-primary/5" : ""}`}
                             onClick={() => setDetail(it)}
                             data-testid={`refurb-card-${it.id}`}
                         >
                             <CardContent className="p-5 space-y-4">
                                 <div className="flex justify-between items-start gap-2">
                                     <div className="flex items-center gap-3 min-w-0">
+                                        <input
+                                            type="checkbox"
+                                            className="h-4 w-4 accent-[hsl(var(--primary))] cursor-pointer shrink-0"
+                                            checked={sel.selected.has(it.id)}
+                                            onChange={() => sel.toggle(it.id)}
+                                            onClick={(e) => e.stopPropagation()}
+                                            data-testid={`refurbished-select-${it.id}`}
+                                            aria-label="Seleziona dispositivo"
+                                        />
                                         <div className="h-10 w-10 rounded-md bg-primary/15 border border-primary/30 grid place-items-center shrink-0">
                                             <Icon className="h-5 w-5 text-primary" />
                                         </div>
