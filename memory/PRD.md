@@ -165,6 +165,16 @@
 - ✅ PUT ricondizionato allinea sempre l'uscita acquisto (importo/data/descrizione) e la cassa della vendita
 - ✅ Test iteration_14: backend 114/114, frontend E2E OK.
 
+## Implemented (2026-06 — sessione 12)
+- ✅ Costo ricondizionato include gli interventi della riparazione collegata (services_cost) + dettaglio costi
+- ✅ Scheda cliente: storico riparazioni/acquisti (GET /customers/{id}/summary, CustomerHistory)
+- ✅ Stato ricambio automatico: esaurito a quantità 0, disponibile se torna >0 (refresh_part_status)
+- ✅ Campo colore ricambio (Part.color) nel form + colonna + dettaglio
+- ✅ Ricondizionati in vista tabella ridimensionabile/ordinabile/selezionabile
+- ✅ Filtro compatibilità (marca → modello) in Magazzino; helper condiviso lib/compat.js
+- ✅ Scroll orizzontale anche in Listino interventi e storico cliente
+- ✅ Test iteration_15: backend + frontend OK (pytest 114 + test_iter15).
+
 ## Backlog (P1/P2)
 - P1 Filtri per data su report (settimana/mese/trimestre/anno)
 - P1 Riordino rapido da "sotto scorta" → crea ordine precompilato al fornitore

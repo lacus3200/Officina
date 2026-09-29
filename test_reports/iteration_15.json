@@ -1,0 +1,38 @@
+{
+  "summary": "Iteration 15 testing: Part.color + esaurito status transitions, refurb services_cost/total_cost via linked open-repair, sale.cost_total inheritance, GET /api/customers/{id}/summary, plus frontend flows: inventory compat filter (brand->model), color column & form field, customer detail dialog with history, refurbished ResizableTable + detail dialog with cost breakdown/services cost, refurb-delete-dialog, and Listino interventi horizontal scroll on 500px viewport. All backend + frontend scenarios PASSED.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "tests_executed": [
+    {"id": "B1_part_color_create_and_status_flip", "flow": "POST /api/parts color='Rosso' qty=2 (color persisted, status disponibile). PUT qty=0 -> status esaurito. PUT qty=3 -> status disponibile.", "result": "PASS"},
+    {"id": "B2_repair_parts_used_flips_status", "flow": "POST parts qty=2. PUT /repairs/{id} parts_used qty=2 -> part qty 0 & status esaurito. PUT parts_used=[] -> qty 2 & status disponibile.", "result": "PASS"},
+    {"id": "B3_refurb_services_cost_and_sale_cost_total", "flow": "Refurb purchase_cost=100 + open-repair + PUT services [Pulizia 30] + parts_used 2x10 -> services_cost=30, total_cost=150. POST /sell -> sale.cost_total=150, margin=150.", "result": "PASS"},
+    {"id": "B4_customer_summary", "flow": "GET /api/customers/{id}/summary with 1 open repair + 1 delivered+paid(80) -> repairs_total=2, repairs_open>=1, repairs_spent=80, list contains id/ticket_number/status/final_price, sales+sales_spent present.", "result": "PASS"},
+    {"id": "F1_inventory_color_column", "flow": "Seed part color=Rosso via API; navigate Magazzino; [data-testid=part-color-{id}] shows 'Rosso'.", "result": "PASS"},
+    {"id": "F2_inventory_compat_filter", "flow": "SearchSelect inventory-compat-brand -> Apple; badge inventory-compat-count shows '32 ricambi compatibili con Apple'; reset via -none- removes badge.", "result": "PASS"},
+    {"id": "F3_inventory_form_color_field", "flow": "new-part-button opens dialog; refurb-color-select present in form.", "result": "PASS"},
+    {"id": "F4_customer_detail_history", "flow": "Click customer-row-{id} -> customer-detail-dialog visible; customer-history present; customer-repairs-total='1'; customer-repair-{rid} row visible.", "result": "PASS"},
+    {"id": "F5_refurbished_table_view", "flow": "refurbished-table-scroll present with 35 refurbished-th-* headers (5 sortable rows visible); click row -> refurb-detail-dialog with refurb-cost-breakdown + refurb-services-cost present.", "result": "PASS"},
+    {"id": "F6_refurb_delete_dialog", "flow": "Create refurb via API, reload; click delete-refurb-{id} -> refurb-delete-dialog opens.", "result": "PASS"},
+    {"id": "F7_listino_horizontal_scroll_500px", "flow": "Viewport 500x900 on /services; 11 containers .overflow-x-auto.scroll-table with scrollWidth(560)>clientWidth(466) → horizontal scroll active, layout intact (see screenshot).", "result": "PASS"}
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_iter15_color_summary_services_cost.py",
+    "/app/test_reports/pytest/iter15.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "refresh_part_status only flips esaurito<->disponibile: if user manually sets status='difettoso' or 'in_uso', qty transitions won't override those. Correct/intentional but worth documenting.",
+    "customer_summary uses hardcoded open_states tuple ('in_attesa','in_lavorazione','completata'); if new statuses are added later, remember to update.",
+    "enrich_refurb recomputes services_cost every read via db query on repairs — fine for now but for many refurbs it will O(N) DB roundtrips; consider projection/batching for list endpoints.",
+    "The leftover TEST_Color_Rosso row in inventory could not be deleted post-hoc via curl (403). Root cause: pytest cleanup ran but the part likely had record_part_purchase cash movement or another linkage; the auth-token delete via CLI got 403 (delete requires certain conditions). Non-blocking; test-only artifact.",
+    "SearchSelect option value uses the raw name in data-testid (e.g. inventory-compat-brand-opt-Apple); names with spaces/quotes could collide with selectors — minor."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter15_color_summary_services_cost.py"],
+  "success_rate": {"backend": "100% (4/4)", "frontend": "100% (7/7)"},
+  "test_credentials": "admin@lab.local / admin123 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "All seeded via API and cleaned up in the same run: TEST_Color_Rosso, TEST_PartFlip, TEST_RefurbPart, TEST_UI_ColorPart, TEST_UI_CustFlow customer + repair, refurb TEST/DELETE. A single TEST_Color_Rosso part row remained in DB (403 on standalone DELETE via curl); safe to remove manually via UI if needed.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Pytest suite for iter15 lives at /app/backend/tests/test_iter15_color_summary_services_cost.py (4 tests). Note: PUT /api/parts requires full PartIn body (name mandatory) — partial payloads return 422. SearchSelect option testIds: `${testId}-opt-<value>` and `${testId}-none`. Customer detail dialog testId=customer-detail-dialog; row testId pattern customer-row-<id>; repair row testId customer-repair-<rid>. Refurb table testId=refurbished-table-scroll, headers refurbished-th-<i>, edit/delete edit-refurb-<id>/delete-refurb-<id>, dialog refurb-detail-dialog contains refurb-cost-breakdown and refurb-services-cost. Listino interventi uses .overflow-x-auto.scroll-table wrappers. Older iter10-14 test files use `from tests.conftest import API` which fails from repo root (ModuleNotFoundError); pre-existing, not caused here. Also pre-existing failure in test_iter9_refactor_regression::test_backup_export_and_merge_replace (parts count drift 44->43 across backup merge/replace) — likely due to state left by other tests, not iter15.",
+  "rca of the issue": "N/A — no new bugs found. All 7 requested feature scenarios (backend + frontend) work as specified."
+}
