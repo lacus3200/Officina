@@ -104,7 +104,7 @@ export default function ServicesPage() {
                 <Card key={cat}>
                     <CardContent className="p-0">
                         <div className="px-4 py-2 eyebrow border-b border-border bg-black/20">{cat}</div>
-                        <table className="w-full text-sm">
+                        <div className="overflow-x-auto scroll-table"><table className="w-full text-sm min-w-[560px]">
                             <tbody>
                                 {list.map((s) => (
                                     <tr key={s.id} className="border-b border-border/50 hover:bg-white/5" data-testid={`service-row-${s.id}`}>
@@ -136,7 +136,7 @@ export default function ServicesPage() {
                                     </tr>
                                 ))}
                             </tbody>
-                        </table>
+                        </table></div>
                     </CardContent>
                 </Card>
             ))}

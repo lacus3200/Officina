@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 export function DetailDialog({ open, onOpenChange, title, subtitle, rows = [], children, testId = "row-detail-dialog" }) {
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="bg-card border-border max-w-xl max-h-[90vh] overflow-y-auto" data-testid={testId}>
+            <DialogContent className="bg-card border-border max-w-2xl max-h-[90vh] overflow-y-auto" data-testid={testId}>
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-3 flex-wrap">
                         {title}

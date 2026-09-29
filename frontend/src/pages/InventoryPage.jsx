@@ -27,12 +27,15 @@ import { PartNameSelect, CompatibleModelsField, PartCategorySelect, PartBrandSel
 import { PartCatalogManager } from "@/components/PartCatalogManager";
 import { useColumnWidths, ResizableTh, ScrollTable, useTableSort, useSelection, SelectAllCheckbox, RowCheckbox, BulkBar, bulkDelete } from "@/components/ResizableTable";
 import { DetailDialog } from "@/components/DetailDialog";
+import { ColorSelect } from "@/components/ColorSelect";
+import { SearchSelect } from "@/components/SearchSelect";
+import { isCompatible } from "@/lib/compat";
 import { Settings2 } from "lucide-react";
 
-const COLS = ["Nome", "Marca", "Categoria", "Condizione", "Stato", "Q.tà", "Costo", "Prezzo", "Posizione", "Entrata / Uscita", "Azioni"];
-const COL_DEFAULTS = [240, 130, 130, 120, 130, 90, 100, 100, 110, 140, 130];
-const SORT_KEYS = ["name", "brand", "category", "condition", "status", "quantity", "cost_price", "sell_price", "location", "entered_at", null];
-const ACCESSORS = { name: (p) => p.name, brand: (p) => p.brand, category: (p) => p.category, condition: (p) => p.condition, status: (p) => p.status, quantity: (p) => p.quantity, cost_price: (p) => p.cost_price, sell_price: (p) => p.sell_price, location: (p) => p.location, entered_at: (p) => p.entered_at || p.created_at };
+const COLS = ["Nome", "Marca", "Colore", "Categoria", "Condizione", "Stato", "Q.tà", "Costo", "Prezzo", "Posizione", "Entrata / Uscita", "Azioni"];
+const COL_DEFAULTS = [240, 130, 110, 130, 120, 130, 90, 100, 100, 110, 140, 130];
+const SORT_KEYS = ["name", "brand", "color", "category", "condition", "status", "quantity", "cost_price", "sell_price", "location", "entered_at", null];
+const ACCESSORS = { name: (p) => p.name, brand: (p) => p.brand, color: (p) => p.color, category: (p) => p.category, condition: (p) => p.condition, status: (p) => p.status, quantity: (p) => p.quantity, cost_price: (p) => p.cost_price, sell_price: (p) => p.sell_price, location: (p) => p.location, entered_at: (p) => p.entered_at || p.created_at };
 
 const EMPTY = {
     name: "",
@@ -51,6 +54,7 @@ const EMPTY = {
     exited_at: "",
     compatible_models: [],
     brand: "",
+    color: "",
 };
 
 const toDateInput = (iso) => (iso ? iso.slice(0, 10) : "");
@@ -64,8 +68,13 @@ export default function InventoryPage() {
     const [form, setForm] = useState(EMPTY);
     const [editingId, setEditingId] = useState(null);
     const [manageOpen, setManageOpen] = useState(false);
+    const [compat, setCompat] = useState({ brand: "", model: "" });
+    const [brands, setBrands] = useState([]);
+    const [models, setModels] = useState([]);
+    useEffect(() => { api.get("/catalog/brands").then((r) => setBrands(r.data)).catch(() => {}); }, []);
+    useEffect(() => { compat.brand ? api.get("/catalog/models", { params: { brand: compat.brand } }).then((r) => setModels(r.data)).catch(() => {}) : setModels([]); }, [compat.brand]);
     const [widths, setWidths, resetWidths] = useColumnWidths("inventory", COL_DEFAULTS);
-    const filtered = items;
+    const filtered = useMemo(() => (compat.brand ? items.filter((p) => isCompatible(p, compat.brand, compat.model)) : items), [items, compat]);
     const { sorted, sort, toggle: toggleSort } = useTableSort(filtered, ACCESSORS);
     const sel = useSelection(sorted);
     const [bulkBusy, setBulkBusy] = useState(false);
@@ -193,6 +202,10 @@ export default function InventoryPage() {
                             <div>
                                 <Label className="eyebrow">Marca ricambio</Label>
                                 <PartBrandSelect value={form.brand || ""} onChange={(brand) => setForm({ ...form, brand })} />
+                            </div>
+                            <div>
+                                <Label className="eyebrow">Colore</Label>
+                                <ColorSelect value={form.color || ""} onChange={(color) => setForm({ ...form, color })} />
                             </div>
                             <div>
                                 <Label className="eyebrow">SKU / Codice</Label>
@@ -361,6 +374,20 @@ export default function InventoryPage() {
                     Ripristina larghezza colonne
                 </button>
             </div>
+            <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+                <span className="text-xs text-muted-foreground uppercase tracking-wider">Compatibilità</span>
+                <div className="w-full sm:w-52">
+                    <SearchSelect testId="inventory-compat-brand" value={compat.brand} placeholder="Tutte le marche" searchPlaceholder="Cerca marca…" noneLabel="Tutte le marche"
+                        options={brands.map((b) => ({ value: b.name, label: b.name }))} onChange={(v) => setCompat({ brand: v || "", model: "" })} />
+                </div>
+                <div className="w-full sm:w-64">
+                    <SearchSelect testId="inventory-compat-model" value={compat.model} disabled={!compat.brand} placeholder={compat.brand ? "Tutti i modelli" : "Scegli la marca"} searchPlaceholder="Cerca modello…" noneLabel="Tutti i modelli"
+                        options={models.map((m) => ({ value: m.name, label: m.code ? `${m.name} (${m.code})` : m.name, keywords: m.code || "" }))} onChange={(v) => setCompat({ ...compat, model: v || "" })} />
+                </div>
+                {compat.brand && (
+                    <span className="text-xs text-sky-400" data-testid="inventory-compat-count">{filtered.length} ricambi compatibili con {compat.brand} {compat.model}</span>
+                )}
+            </div>
             <PartCatalogManager open={manageOpen} onOpenChange={setManageOpen} onChanged={load} />
             <BulkBar count={sel.selected.size} onDelete={removeSelected} onClear={sel.clear} label="ricambi" busy={bulkBusy} />
 
@@ -371,7 +398,7 @@ export default function InventoryPage() {
                             <tr className="text-left text-muted-foreground border-b border-border">
                                 <th className="px-3 py-3 w-10"><SelectAllCheckbox checked={sel.allSelected} onChange={sel.toggleAll} testId="inventory-select-all" /></th>
                                 {COLS.map((c, i) => (
-                                    <ResizableTh key={c} index={i} widths={widths} setWidths={setWidths} testId={`inventory-th-${i}`} sortKey={SORT_KEYS[i]} sort={sort} onSort={toggleSort} className={[5, 6, 7, 10].includes(i) ? "text-right" : ""}>
+                                    <ResizableTh key={c} index={i} widths={widths} setWidths={setWidths} testId={`inventory-th-${i}`} sortKey={SORT_KEYS[i]} sort={sort} onSort={toggleSort} className={[6, 7, 8, 11].includes(i) ? "text-right" : ""}>
                                         {c}
                                     </ResizableTh>
                                 ))}
@@ -381,7 +408,7 @@ export default function InventoryPage() {
                             {sorted.length === 0 && (
                                 <tr>
                                     <td
-                                        colSpan={12}
+                                        colSpan={13}
                                         className="text-center py-14 text-muted-foreground"
                                     >
                                         Nessun ricambio nel magazzino.
@@ -411,6 +438,9 @@ export default function InventoryPage() {
                                         </td>
                                         <td className="px-4 py-3 text-muted-foreground truncate">
                                             {p.brand || "—"}
+                                        </td>
+                                        <td className="px-4 py-3 text-muted-foreground truncate" data-testid={`part-color-${p.id}`}>
+                                            {p.color || "—"}
                                         </td>
                                         <td className="px-4 py-3 text-muted-foreground truncate">
                                             {p.category || "—"}
@@ -496,6 +526,7 @@ export default function InventoryPage() {
                 subtitle={rowDetail && (rowDetail.sku)}
                 rows={rowDetail ? [
                     { label: "Marca", value: rowDetail.brand },
+                    { label: "Colore", value: rowDetail.color },
                     { label: "Categoria", value: rowDetail.category },
                     { label: "Condizione", value: PART_CONDITION[rowDetail.condition]?.label },
                     { label: "Stato", value: PART_STATUS[rowDetail.status]?.label },

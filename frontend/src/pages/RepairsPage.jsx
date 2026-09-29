@@ -30,6 +30,7 @@ import {
     Wrench,
 } from "lucide-react";
 import { toast } from "sonner";
+import { isCompatible } from "@/lib/compat";
 import {
     currency,
     formatDate,
@@ -50,14 +51,6 @@ const COL_DEFAULTS = [120, 170, 190, 260, 170, 110, 140, 130];
 const SORT_KEYS = ["ticket_number", "customer_name", "device", "problem", "status", "final_price", "received_at", null];
 const ACCESSORS = { ticket_number: (r) => r.ticket_number, customer_name: (r) => r.customer_name, device: (r) => `${r.device_brand || ""} ${r.device_model || ""}`, problem: (r) => r.problem, status: (r) => r.status, final_price: (r) => r.final_price || r.estimate, received_at: (r) => r.received_at || r.created_at };
 
-const isCompatible = (p, brand, model) => {
-    if (!brand || !p.compatible_models?.length) return false;
-    const full = `${brand} ${model || ""}`.trim().toLowerCase();
-    return p.compatible_models.some((m) => {
-        const ml = m.toLowerCase();
-        return ml === full || (ml.startsWith(brand.toLowerCase()) && ml.includes("tutti i modelli")) || (model && ml === `${brand} ${model}`.toLowerCase());
-    });
-};
 
 const toDateInput = (iso) => (iso ? iso.slice(0, 10) : "");
 const fromDateInput = (d, fallback) => (d ? new Date(`${d}T12:00:00`).toISOString() : fallback || null);

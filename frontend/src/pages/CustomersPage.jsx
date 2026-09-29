@@ -28,6 +28,7 @@ import { toast } from "sonner";
 import { formatDate } from "@/lib/format";
 import { useColumnWidths, ResizableTh, ScrollTable, useTableSort, useSelection, SelectAllCheckbox, RowCheckbox, BulkBar, bulkDelete } from "@/components/ResizableTable";
 import { DetailDialog } from "@/components/DetailDialog";
+import { CustomerHistory } from "@/components/CustomerHistory";
 
 const COLS = ["Cliente", "Telefono", "Email", "Indirizzo", "Note", "Dal", "Azioni"];
 const COL_DEFAULTS = [220, 140, 220, 220, 260, 110, 110];
@@ -298,6 +299,7 @@ export default function CustomersPage() {
                     { label: "Note", value: rowDetail.notes },
                 ] : []}
             >
+                {rowDetail && <CustomerHistory customerId={rowDetail.id} />}
                 <div className="flex gap-2 justify-end">
                     <Button variant="outline" onClick={() => { edit(rowDetail); setRowDetail(null); }} data-testid="customer-detail-edit">Modifica</Button>
                 </div>

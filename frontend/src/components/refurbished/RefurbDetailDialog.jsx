@@ -45,7 +45,7 @@ function Timeline({ item }) {
                   {
                       icon: Wrench,
                       title: `Riparazione ${item.repair.ticket_number}`,
-                      sub: `${item.repair.problem} · ricambi ${currency(item.parts_cost)}${item.repair.parts_used?.length ? " (" + item.repair.parts_used.filter((p) => p.part_id).map((p) => `${p.part_name} ×${p.quantity}${p.surcharge ? ` +${currency(p.surcharge)}` : ""}`).join(", ") + ")" : ""}`,
+                      sub: `${item.repair.problem} · ricambi ${currency(item.parts_cost)} · interventi ${currency(item.services_cost || 0)}${item.repair.services?.length ? " (" + item.repair.services.map((sv) => sv.name).join(", ") + ")" : ""}${item.repair.parts_used?.length ? " (" + item.repair.parts_used.filter((p) => p.part_id).map((p) => `${p.part_name} ×${p.quantity}${p.surcharge ? ` +${currency(p.surcharge)}` : ""}`).join(", ") + ")" : ""}`,
                       date: null,
                   },
               ]
@@ -143,6 +143,12 @@ export function RefurbDetailDialog({ item, onOpenChange, onChanged }) {
                     )}
                     <Stat label={item.status === "venduto" ? "Venduto a" : "Prezzo obiettivo"} value={currency(item.status === "venduto" ? item.sale_price : item.target_price)} />
                 </div>
+                    <div className="-mt-1 text-xs text-muted-foreground flex flex-wrap gap-x-4" data-testid="refurb-cost-breakdown">
+                        <span>Acquisto {currency(item.purchase_cost)}</span>
+                        <span>Ricambi {currency(item.parts_cost)}</span>
+                        <span data-testid="refurb-services-cost">Interventi {currency(item.services_cost || 0)}</span>
+                        <span>Costi extra {currency(item.extra_costs)}</span>
+                    </div>
 
                 {item.status === "venduto" && (
                     <div className="flex items-center gap-2 text-sm" data-testid="sold-info">

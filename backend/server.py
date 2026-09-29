@@ -138,6 +138,7 @@ class Part(BaseModel):
     exited_at: Optional[str] = None
     compatible_models: List[str] = []
     brand: Optional[str] = None
+    color: Optional[str] = None
     created_at: str = Field(default_factory=now_iso)
     updated_at: str = Field(default_factory=now_iso)
 
@@ -159,6 +160,7 @@ class PartIn(BaseModel):
     exited_at: Optional[str] = None
     compatible_models: List[str] = []
     brand: Optional[str] = None
+    color: Optional[str] = None
 
 
 RepairStatus = Literal["in_attesa", "in_lavorazione", "completata", "consegnata", "annullata"]
@@ -180,6 +182,10 @@ class RepairService(BaseModel):
     service_id: Optional[str] = None
     name: str
     price: float = 0.0
+
+
+def services_total(services: list) -> float:
+    return round(sum(float(s.get("price") or 0) for s in services or []), 2)
 
 
 class Repair(BaseModel):
@@ -735,6 +741,21 @@ async def get_customer(customer_id: str, user: dict = Depends(get_current_user))
     return clean(c)
 
 
+@api.get("/customers/{customer_id}/summary")
+async def customer_summary(customer_id: str, user: dict = Depends(get_current_user)):
+    repairs = [clean(r) for r in await db.repairs.find({"customer_id": customer_id}).sort("created_at", -1).to_list(500)]
+    sales = [clean(s) for s in await db.sales.find({"customer_id": customer_id}).sort("created_at", -1).to_list(500)]
+    open_states = ("in_attesa", "in_lavorazione", "completata")
+    return {
+        "repairs": [{k: r.get(k) for k in ("id", "ticket_number", "device_brand", "device_model", "device_type", "problem", "status", "final_price", "estimate", "paid", "received_at", "created_at", "delivered_at")} for r in repairs],
+        "sales": [{k: s.get(k) for k in ("id", "invoice_number", "total", "created_at", "items")} for s in sales],
+        "repairs_total": len(repairs),
+        "repairs_open": sum(1 for r in repairs if r.get("status") in open_states),
+        "repairs_spent": round(sum(float(r.get("final_price") or 0) for r in repairs if r.get("status") == "consegnata" and r.get("paid")), 2),
+        "sales_spent": round(sum(float(s.get("total") or 0) for s in sales), 2),
+    }
+
+
 @api.put("/customers/{customer_id}")
 async def update_customer(customer_id: str, body: CustomerIn, user: dict = Depends(get_current_user)):
     data = body.model_dump(exclude_unset=True)
@@ -780,7 +801,8 @@ async def create_part(body: PartIn, user: dict = Depends(get_current_user)):
         obj.category = guess_part_category(obj.name)
     await db.parts.insert_one(obj.model_dump())
     await record_part_purchase(obj.model_dump(), obj.quantity)
-    return obj
+    await refresh_part_status(obj.id)
+    return clean(await db.parts.find_one({"id": obj.id}))
 
 
 async def record_part_purchase(part: dict, qty: int):
@@ -814,6 +836,7 @@ async def update_part(part_id: str, body: PartIn, user: dict = Depends(get_curre
     data = body.model_dump(exclude_unset=True)
     data["updated_at"] = now_iso()
     await db.parts.update_one({"id": part_id}, {"$set": data})
+    await refresh_part_status(part_id)
     updated = await db.parts.find_one({"id": part_id})
     delta = int(updated.get("quantity", 0)) - int(existing.get("quantity", 0))
     if delta > 0:
@@ -881,12 +904,24 @@ def parts_qty_map(parts_used: list) -> dict:
     return out
 
 
+async def refresh_part_status(part_id: str):
+    p = await db.parts.find_one({"id": part_id})
+    if not p:
+        return
+    qty, st = int(p.get("quantity") or 0), p.get("status")
+    if qty <= 0 and st in ("disponibile", "in_uso"):
+        await db.parts.update_one({"id": part_id}, {"$set": {"status": "esaurito"}})
+    elif qty > 0 and st == "esaurito":
+        await db.parts.update_one({"id": part_id}, {"$set": {"status": "disponibile"}})
+
+
 async def apply_parts_stock_delta(old_parts: list, new_parts: list):
     old, new = parts_qty_map(old_parts), parts_qty_map(new_parts)
     for pid in set(old) | set(new):
         delta = new.get(pid, 0) - old.get(pid, 0)
         if delta:
             await db.parts.update_one({"id": pid}, {"$inc": {"quantity": -delta}, "$set": {"updated_at": now_iso()}})
+            await refresh_part_status(pid)
 
 
 @api.post("/repairs")
@@ -992,6 +1027,7 @@ async def create_sale(body: SaleIn, user: dict = Depends(get_current_user)):
     for it in obj.items:
         if it.part_id:
             await db.parts.update_one({"id": it.part_id}, {"$inc": {"quantity": -it.quantity}})
+            await refresh_part_status(it.part_id)
 
     # cash entry
     mov = CashMovement(
@@ -1296,20 +1332,23 @@ async def enrich_refurb(doc: dict) -> dict:
     doc = clean(doc)
     extra_costs = sum(c["amount"] for c in doc.get("refurb_costs", []))
     parts_cost = 0.0
+    services_cost = 0.0
     repair = None
     if doc.get("repair_id"):
         repair = clean(await db.repairs.find_one({"id": doc["repair_id"]}))
         if repair:
             parts_cost = parts_used_total(repair.get("parts_used", []))
-    total_cost = round(doc.get("purchase_cost", 0) + extra_costs + parts_cost, 2)
+            services_cost = services_total(repair.get("services", []))
+    total_cost = round(doc.get("purchase_cost", 0) + extra_costs + parts_cost + services_cost, 2)
     doc["parts_cost"] = round(parts_cost, 2)
+    doc["services_cost"] = round(services_cost, 2)
     doc["extra_costs"] = round(extra_costs, 2)
     doc["total_cost"] = total_cost
     doc["margin"] = round(doc["sale_price"] - total_cost, 2) if doc.get("status") == "venduto" else None
     doc["expected_margin"] = round(doc.get("target_price", 0) - total_cost, 2)
     doc["repair"] = (
         {"ticket_number": repair["ticket_number"], "status": repair["status"], "problem": repair["problem"],
-         "parts_used": repair.get("parts_used", []), "id": repair["id"]}
+         "parts_used": repair.get("parts_used", []), "services": repair.get("services", []), "id": repair["id"]}
         if repair else None
     )
     return doc
